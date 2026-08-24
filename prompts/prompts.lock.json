@@ -1,0 +1,84 @@
+{
+  "slots": {
+    "advocate.1.ex_ante": {
+      "version": "1.3.0+1.0.0+1.0.0+1.0.0",
+      "hash": "4348370ec470a4af3130da95849d7df1b5ba5aa12ab7682d4954c3e38f42fe76"
+    },
+    "advocate.1.flat": {
+      "version": "1.3.0+1.0.0+1.0.0+1.0.0",
+      "hash": "f7666253ce0e4039d236a01bef9dfdc930b65af29c0954acff835771219aee3a"
+    },
+    "advocate.2.ex_post": {
+      "version": "1.3.0+1.0.0+1.0.0+1.0.0",
+      "hash": "1a592d08f7b37c143ab6a39124835b289ae2d9d1331c8e41faaf62969dd8b8dd"
+    },
+    "advocate.2.flat": {
+      "version": "1.3.0+1.0.0+1.0.0+1.0.0",
+      "hash": "f7666253ce0e4039d236a01bef9dfdc930b65af29c0954acff835771219aee3a"
+    },
+    "advocate.3.ex_ante": {
+      "version": "1.3.0+1.0.0+1.0.0+1.0.0",
+      "hash": "2603ced79df3f92e7e338ea4ba13caa7422f688f347694cec07e69ce8af5d5f1"
+    },
+    "advocate.3.flat": {
+      "version": "1.3.0+1.0.0+1.0.0+1.0.0",
+      "hash": "41546825c385c84e79f4d484b8687d26adcb771c466d358fd45634979b334628"
+    },
+    "advocate.4.ex_post": {
+      "version": "1.3.0+1.0.0+1.0.0+1.0.0",
+      "hash": "8a074b0301fc164eb761381043c099cd6b6403178d9d1d850351f292edadd804"
+    },
+    "advocate.4.flat": {
+      "version": "1.3.0+1.0.0+1.0.0+1.0.0",
+      "hash": "41546825c385c84e79f4d484b8687d26adcb771c466d358fd45634979b334628"
+    },
+    "judge.1.analytical": {
+      "version": "1.3.0+1.0.0+1.0.0",
+      "hash": "e1fd2973ddf94699859ab09406a07b31769fb6162b074a506bde6be5700e5f7b"
+    },
+    "judge.1.control": {
+      "version": "1.3.0+1.0.0+1.0.0",
+      "hash": "bf893d029c3ae8b08b3cd40148286844a3e7c071063dff2073e0012a17db8ba6"
+    },
+    "judge.1.ethical": {
+      "version": "1.3.0+1.0.0+1.0.0",
+      "hash": "2589542528197eb3a0a8441fbf04aaf940a86d510477c869922ce8d78af7d581"
+    },
+    "judge.1.evidentiary": {
+      "version": "1.3.0+1.0.0+1.0.0",
+      "hash": "89f829852a0e9343e717459f6b303e2a3337749e5106df8c2f05b621ea2fbdee"
+    },
+    "judge.2.analytical": {
+      "version": "1.3.0+1.0.0+1.0.0",
+      "hash": "c74e5f73858cd7d2b2ac7c4c2d34e2f174192f16827c023cf44b8c601fe49e2e"
+    },
+    "judge.2.control": {
+      "version": "1.3.0+1.0.0+1.0.0",
+      "hash": "bf893d029c3ae8b08b3cd40148286844a3e7c071063dff2073e0012a17db8ba6"
+    },
+    "judge.2.ethical": {
+      "version": "1.3.0+1.0.0+1.0.0",
+      "hash": "83ab96ec66f2068a8a324389af7c6bb215be9101928324ff681c98ddf8cf0a4e"
+    },
+    "judge.2.evidentiary": {
+      "version": "1.3.0+1.0.0+1.0.0",
+      "hash": "7b81daaf371766a77455ab658e2c92ba9af31004c411a9f217d61b088d28a9ec"
+    },
+    "judge.3.analytical": {
+      "version": "1.3.0+1.0.0+1.0.0",
+      "hash": "58dfae285436c74d44d11354fd20c127027f9dc37918412b85668bb8a8429b61"
+    },
+    "judge.3.control": {
+      "version": "1.3.0+1.0.0+1.0.0",
+      "hash": "bf893d029c3ae8b08b3cd40148286844a3e7c071063dff2073e0012a17db8ba6"
+    },
+    "judge.3.ethical": {
+      "version": "1.3.0+1.0.0+1.0.0",
+      "hash": "eafbda50f30fa39d5058026a1701933abf2612a43e5dc53cd909a75d0a4c0355"
+    },
+    "judge.3.evidentiary": {
+      "version": "1.3.0+1.0.0+1.0.0",
+      "hash": "12e842f1ce411d081b91d13b45baeb28aee84b5adb7fc25213be485c7f6b8371"
+    }
+  }
+}
