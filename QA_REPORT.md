@@ -179,7 +179,7 @@ The indictment form relies on native `required` and `minLength` validation, so t
 - Database integration tests create and drop a temporary database only.
 - Existing application data and Docker volumes are not reset.
 - If PostgreSQL is unavailable, the database-dependent suite registers an explicit skip and must be rerun before claiming database integration readiness in a new environment. On 27 August 2026 PostgreSQL was reachable and zero tests were skipped.
-- The 27 August 2026 pass created four QA cases in the local `tribunal` database through the normal API. One was soft-deleted while verifying owner deletion. No pre-existing case was modified or removed.
+- The 27 August 2026 pass created five QA cases in the local `tribunal` database through the normal API, all through the scripted provider at `$0.00`. One was soft-deleted while verifying owner deletion. The four pre-existing cases were not modified or removed, and no temporary integration database remained afterwards.
 - Prompt files themselves are already English and were not altered by localization; therefore prompt versions and hashes do not require a bump.
 
 ## 9. Localization audit
