@@ -23,3 +23,24 @@ export function caseLabel(view: CaseLabelInput): string {
     default: return "Case accepted; preparing four independent arguments";
   }
 }
+
+export interface HistoryStateInput {
+  isSuccess: boolean;
+  isError: boolean;
+}
+
+/**
+ * Message shown when the previous-cases list has nothing to render.
+ *
+ * "There are no cases" is a factual claim about the session, so it requires a
+ * confirmed successful response. Every other state is unknown rather than
+ * empty: a request that is queued, in flight, or waiting between retries
+ * reports loading, and a failed request reports the failure. Deciding this from
+ * an in-flight flag alone was wrong, because a query waiting to retry is
+ * neither actively fetching nor finished.
+ */
+export function historyLabel(state: HistoryStateInput): string {
+  if (state.isError) return "Unable to load previous cases.";
+  if (!state.isSuccess) return "Loading previous cases…";
+  return "There are no cases in this browser session yet.";
+}

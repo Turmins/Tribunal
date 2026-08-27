@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { createRoot } from "react-dom/client";
 import { QueryClient, QueryClientProvider, useQuery } from "@tanstack/react-query";
 import { createCase, getCase, getCases, getPanels, type Indictment } from "./api.js";
-import { caseLabel } from "./labels.js";
+import { caseLabel, historyLabel } from "./labels.js";
 import "./styles.css";
 
 const queryClient = new QueryClient();
@@ -167,7 +167,11 @@ function History({ open }: { open: (id: string) => void }) {
             {panelTitle(panels.data?.items, item.panel) ? ` · ${panelTitle(panels.data?.items, item.panel)}` : ""}
           </span>
         </button>
-      )) : <p className="muted">There are no cases in this browser session yet.</p>}
+      )) : (
+        <p className={query.isError ? "form-error" : "muted"}>
+          {historyLabel({ isSuccess: query.isSuccess, isError: query.isError })}
+        </p>
+      )}
     </section>
   );
 }
