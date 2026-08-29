@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-const SECRET = "sk-or-v1-evaluation-secret-value-never-printed";
+const SECRET = "sk-or-v1-fake-evaluation-secret-never-print";
 process.env.OPENROUTER_API_KEY = SECRET;
 
 const { runEvaluation, planEvaluation } = await import("../src/live/evaluation.js");
