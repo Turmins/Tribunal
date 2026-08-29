@@ -4,7 +4,7 @@ Tribunal is a web application for examining a difficult act from opposing perspe
 
 The application never chooses a winner, counts votes, or creates a combined verdict. The human user interprets the disagreement and makes the final decision.
 
-See [ARCHITECTURE.md](./ARCHITECTURE.md) for the implementation design, [TRIBUNAL_CONTEXT_HANDOFF.md](./TRIBUNAL_CONTEXT_HANDOFF.md) for the course requirements, [AGENTS.md](./AGENTS.md) for the model-role layer, [LIVE_EVALUATION.md](./LIVE_EVALUATION.md) for the guarded live-evaluation tools, and [QA_REPORT.md](./QA_REPORT.md) for current verification evidence.
+See [ARCHITECTURE.md](./ARCHITECTURE.md) for the implementation design, [TRIBUNAL_CONTEXT_HANDOFF.md](./TRIBUNAL_CONTEXT_HANDOFF.md) for the course requirements, [AGENTS.md](./AGENTS.md) for the model-role layer, [LIVE_EVALUATION.md](./LIVE_EVALUATION.md) for the guarded live-evaluation tools, [VERIFICATION.md](./VERIFICATION.md) for the merge gates, and [QA_REPORT.md](./QA_REPORT.md) for current verification evidence.
 
 ## Implemented
 
@@ -58,6 +58,18 @@ The default `MODEL_ADAPTER=scripted` mode requires no OpenRouter account and inc
 ```sh
 npm run check
 ```
+
+Mechanical gates refuse a commit that carries a credential, non-English tracked
+content, or an unannounced change to prompts, the prompt lock, or migration
+history. Install them once per clone:
+
+```sh
+npm run hooks:install
+```
+
+`npm run gate:merge` collects the merge-readiness evidence pack. Every gate
+carries a self-test and must prove it can fail before it is allowed to report a
+clean result. See [VERIFICATION.md](./VERIFICATION.md).
 
 The command runs strict type checks, protocol and regression tests, and a production build. PostgreSQL integration scenarios run when a database is reachable and are reported as skipped otherwise. No test invokes live OpenRouter.
 

@@ -1,0 +1,8 @@
+#!/bin/sh
+# Cheap verification gates. These run with nobody present and refuse the commit
+# when they find a credential, non-English tracked content, or an unannounced
+# change to prompts, the prompt lock, or migration history.
+#
+# Bypassing this hook with --no-verify defeats the control it provides. If a
+# finding is wrong, fix the gate rather than skipping it.
+exec node --import tsx scripts/gate.ts --commit-message-file "$(git rev-parse --git-dir)/COMMIT_EDITMSG"

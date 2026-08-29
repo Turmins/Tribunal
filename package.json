@@ -18,6 +18,9 @@
     "live:canary": "node --env-file-if-exists=.env --import tsx src/live/canary-cli.ts",
     "eval:models": "node --env-file-if-exists=.env --import tsx src/live/eval-cli.ts",
     "eval:example": "node --import tsx scripts/evaluation-example.ts",
+    "gate": "node --import tsx scripts/gate.ts",
+    "gate:merge": "node --import tsx scripts/gate.ts --merge",
+    "hooks:install": "node scripts/install-hooks.mjs",
     "build:server": "tsc -p tsconfig.server.json"
   },
   "dependencies": {
