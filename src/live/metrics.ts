@@ -1,4 +1,3 @@
-import type { Stance } from "../types.js";
 import type { GuardedOutcome } from "./run.js";
 
 /**
@@ -46,22 +45,6 @@ export function textDiversityProxy(texts: readonly string[]): number | null {
     }
   }
   return round4(distances.reduce((sum, value) => sum + value, 0) / distances.length);
-}
-
-export interface DecisionDistribution {
-  readonly justified: number;
-  readonly not_justified: number;
-  readonly unavailable: number;
-}
-
-export function decisionDistribution(outcomes: readonly GuardedOutcome[]): DecisionDistribution {
-  const judges = outcomes.filter(o => o.role === "judge");
-  const count = (value: Stance) => judges.filter(o => o.decision === value).length;
-  return {
-    justified: count("justified"),
-    not_justified: count("not_justified"),
-    unavailable: judges.filter(o => o.decision === null).length,
-  };
 }
 
 export interface ContractStats {

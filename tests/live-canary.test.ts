@@ -27,7 +27,7 @@ test("canary: a dry run performs no model call and no network call", async () =>
     const report = await runCanary({ ...OPTIONS, execute: false }, deps(provider));
     assert.equal(provider.calls.length, 0, "dry run must not call the provider");
     assert.equal(guard.called(), 0, "dry run must not touch the network");
-    assert.equal(report.plan.networkCallPerformed, false);
+    assert.equal(report.plan.providerCallAttempted, false);
     assert.equal(report.outcome, null);
     assert.equal(report.callCount, 0);
     assert.ok(report.plan.estimate.maxCostUsd > 0, "a dry run still produces a cost ceiling");
@@ -85,13 +85,13 @@ test("canary: an estimate above the approved limit blocks the call", async () =>
   assert.equal(provider.calls.length, 0, "no request may be sent when the estimate does not fit");
 });
 
-test("canary: a permitted run issues at most one model request", async () => {
+test("canary: a permitted run attempts at most one logical completion", async () => {
   const provider = stubProvider();
   const report = await runCanary({ ...OPTIONS, execute: true, maxCostUsd: 10 }, deps(provider));
   assert.equal(provider.calls.length, 1, "the canary is limited to a single request");
   assert.equal(report.callCount, 1);
   assert.equal(MAX_CANARY_CALLS, 1);
-  assert.equal(report.plan.networkCallPerformed, true);
+  assert.equal(report.plan.providerCallAttempted, true);
 });
 
 test("canary: a valid response passes the production validator", async () => {
@@ -149,19 +149,24 @@ test("canary: a paid but invalid response still counts toward spend", async () =
   assert.equal(report.budget?.spentUsd, 0.004, "an invalid answer was still paid for");
 });
 
-test("canary: a provider failure records an error and spends nothing", async () => {
+test("canary: an ambiguous provider failure consumes the conservative reservation", async () => {
   const provider = stubProvider([{ fail: "connection reset" }]);
   const report = await runCanary({ ...OPTIONS, execute: true, maxCostUsd: 10 }, deps(provider));
   assert.equal(report.outcome?.ok, false);
   assert.equal(report.outcome?.errorCode, "provider_error");
-  assert.equal(report.budget?.spentUsd, 0);
+  assert.equal(report.outcome?.costBasis, "conservative_reservation");
+  assert.equal(report.outcome?.costUncertain, true);
+  assert.equal(report.budget?.spentUsd, report.plan.estimate.maxCostUsd);
 });
 
-test("canary: the format fallback is reported when the provider used it", async () => {
-  const provider = stubProvider([{ formatFallback: true, httpAttempts: 2 }]);
+test("canary: the format fallback is reported and conservatively accounted", async () => {
+  const provider = stubProvider([{ formatFallback: true, httpAttempts: 2, costSource: "unknown" }]);
   const report = await runCanary({ ...OPTIONS, execute: true, maxCostUsd: 10 }, deps(provider));
   assert.equal(report.outcome?.formatFallback, true);
   assert.equal(report.outcome?.httpAttempts, 2);
+  assert.equal(report.outcome?.costBasis, "conservative_reservation");
+  assert.equal(report.outcome?.costUncertain, true);
+  assert.equal(report.budget?.spentUsd, report.plan.estimate.maxCostUsd);
 });
 
 test("canary: the estimate covers a possible format-fallback retry", async () => {

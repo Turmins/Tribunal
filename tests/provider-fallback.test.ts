@@ -39,6 +39,20 @@ test("model without strict schemas receives one compatible-mode fallback", async
     assert.equal(stub.bodies[1].response_format.type, "json_object", "fallback must use compatible mode");
     assert.equal(result.finishReason, "stop");
     assert.equal(result.costUsd, 0.001);
+    assert.equal(result.costSource, "unknown", "the first HTTP attempt has no authoritative billing record");
+  } finally { stub.restore(); }
+});
+
+test("a missing provider cost is marked as a table estimate", async () => {
+  const withoutCost = {
+    ...ok,
+    usage: { prompt_tokens: 100, completion_tokens: 80 },
+  };
+  const stub = stubFetch([{ status: 200, body: withoutCost }]);
+  try {
+    const result = await new OpenRouterProvider().complete(request);
+    assert.equal(result.costSource, "table");
+    assert.ok(result.costUsd > 0);
   } finally { stub.restore(); }
 });
 

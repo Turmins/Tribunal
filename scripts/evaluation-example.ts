@@ -64,7 +64,7 @@ const run = await runEvaluation(
     models: [model],
     execute: true,
     maxCostUsd: 5,
-    priceOverride: { inputPerMillion: 0.5, outputPerMillion: 1.5 },
+    priceOverrides: { [model]: { inputPerMillion: 0.5, outputPerMillion: 1.5 } },
   },
   { provider: exampleProvider(model), apiKey: "synthetic-not-a-real-key" },
 );

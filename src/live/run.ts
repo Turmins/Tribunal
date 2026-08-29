@@ -54,6 +54,9 @@ export interface GuardedOutcome {
   readonly inputTokens: number;
   readonly outputTokens: number;
   readonly costUsd: number;
+  readonly costBasis: "provider_reported" | "provider_result" | "estimated_from_usage" | "conservative_reservation";
+  /** True when exact provider billing was unavailable and the conservative reservation was charged. */
+  readonly costUncertain: boolean;
   readonly latencyMs: number | null;
   readonly finishReason: string | null;
   readonly httpAttempts: number | null;
@@ -101,19 +104,53 @@ export class GuardedRunner {
     } as const;
 
     this.#calls += 1;
-    let billed: { inputTokens: number; outputTokens: number; costUsd: number } | null = null;
     try {
       const result = await this.options.provider.complete(slot.request);
-      billed = { inputTokens: result.inputTokens, outputTokens: result.outputTokens, costUsd: result.costUsd };
-      this.options.ledger.settle(reservation, result.costUsd);
+      const inputTokens = Number.isFinite(result.inputTokens) && result.inputTokens >= 0 ? result.inputTokens : 0;
+      const outputTokens = Number.isFinite(result.outputTokens) && result.outputTokens >= 0 ? result.outputTokens : 0;
+      let accountedCost = result.costUsd;
+      let costBasis: GuardedOutcome["costBasis"] = result.costSource === "provider"
+        ? "provider_reported"
+        : "provider_result";
+      let costUncertain = false;
+
+      if (result.costSource === "unknown") {
+        accountedCost = estimate.maxCostUsd;
+        costBasis = "conservative_reservation";
+        costUncertain = true;
+      } else if (result.costSource === "table") {
+        const usagePresent = inputTokens + outputTokens > 0;
+        if (usagePresent && result.formatFallback !== true) {
+          accountedCost = (
+            inputTokens * estimate.inputPricePerMillion
+            + outputTokens * estimate.outputPricePerMillion
+          ) / 1_000_000;
+          costBasis = "estimated_from_usage";
+        } else {
+          // A missing usage block or an unpriced first format attempt leaves the
+          // real charge unknowable. Consume the entire reservation rather than
+          // reopening budget that may already have been spent.
+          accountedCost = estimate.maxCostUsd;
+          costBasis = "conservative_reservation";
+          costUncertain = true;
+        }
+      } else if (!Number.isFinite(accountedCost) || accountedCost < 0) {
+        accountedCost = estimate.maxCostUsd;
+        costBasis = "conservative_reservation";
+        costUncertain = true;
+      }
+
+      this.options.ledger.settle(reservation, accountedCost);
 
       const shared = {
         ...base,
         reportedModel: result.model,
         provider: result.provider,
-        inputTokens: result.inputTokens,
-        outputTokens: result.outputTokens,
-        costUsd: round(result.costUsd),
+        inputTokens,
+        outputTokens,
+        costUsd: round(accountedCost),
+        costBasis,
+        costUncertain,
         latencyMs: result.latencyMs,
         finishReason: result.finishReason,
         httpAttempts: result.httpAttempts ?? null,
@@ -151,8 +188,9 @@ export class GuardedRunner {
         };
       }
     } catch (error: unknown) {
-      // The provider itself failed, so nothing was reported as billed.
-      if (billed === null) this.options.ledger.release(reservation);
+      // A transport error can arrive after the provider accepted and billed the
+      // request. Without an authoritative cost, consume the conservative hold.
+      this.options.ledger.settle(reservation, estimate.maxCostUsd);
       return {
         ...base,
         ok: false,
@@ -163,7 +201,9 @@ export class GuardedRunner {
         decision: null,
         inputTokens: 0,
         outputTokens: 0,
-        costUsd: 0,
+        costUsd: estimate.maxCostUsd,
+        costBasis: "conservative_reservation",
+        costUncertain: true,
         latencyMs: null,
         finishReason: null,
         httpAttempts: null,

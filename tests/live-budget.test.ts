@@ -1,14 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { BudgetError, BudgetLedger, parseBudgetUsd } from "../src/live/budget.js";
-
-test("budget: an empty, zero, negative, or malformed limit is rejected", () => {
-  for (const bad of ["", "   ", "0", "-1", "abc", "1.2.3", "NaN", "Infinity", "1e5", undefined, null]) {
-    assert.throws(() => parseBudgetUsd(bad as string | undefined), /budget_invalid/, `expected rejection for ${String(bad)}`);
-  }
-  assert.equal(parseBudgetUsd("0.25"), 0.25);
-  assert.equal(parseBudgetUsd(" 1 "), 1);
-});
+import { BudgetError, BudgetLedger } from "../src/live/budget.js";
 
 test("budget: a ledger cannot be created with a non-positive limit", () => {
   for (const bad of [0, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
@@ -40,12 +32,20 @@ test("budget: settling records the real cost even when it differs from the estim
   assert.ok(Math.abs(ledger.spentUsd - 0.3) < 1e-9, `expected 0.3, got ${ledger.spentUsd}`);
 });
 
-test("budget: a released reservation costs nothing", () => {
+test("budget: the ledger offers no zero-cost release for a dispatched call", () => {
+  // Once a request leaves the process its billing is unknowable here, so every
+  // reservation must close through settle() with a cost. A release helper would
+  // let an error path close a dispatched call at zero and understate spend.
+  const ledger = new BudgetLedger(1) as unknown as Record<string, unknown>;
+  assert.equal(typeof ledger["release"], "undefined", "BudgetLedger must expose no release()");
+});
+
+test("budget: a reservation can still be closed at zero when nothing was dispatched", () => {
   const ledger = new BudgetLedger(1);
   const reservation = ledger.reserve(0.4);
-  ledger.release(reservation);
+  ledger.settle(reservation, 0);
   assert.equal(ledger.spentUsd, 0);
-  assert.equal(ledger.remainingUsd, 1);
+  assert.equal(ledger.remainingUsd, 1, "the hold is returned to the limit");
 });
 
 test("budget: concurrent reservations never exceed the approved limit", async () => {
@@ -71,4 +71,14 @@ test("budget: an overrun is reported rather than hidden", () => {
   ledger.settle(reservation, 0.5);
   assert.equal(ledger.overrun, true);
   assert.equal(ledger.snapshot().spentUsd, 0.5);
+});
+
+test("budget: invalid settled costs are rejected without releasing the reservation", () => {
+  for (const bad of [Number.NaN, Number.POSITIVE_INFINITY, -1]) {
+    const ledger = new BudgetLedger(1);
+    const reservation = ledger.reserve(0.4);
+    assert.throws(() => ledger.settle(reservation, bad), /budget_invalid/);
+    assert.equal(ledger.reservedUsd, 0.4);
+    assert.equal(ledger.spentUsd, 0);
+  }
 });

@@ -3,14 +3,14 @@
 Two command-line tools prepare Tribunal for paid inference without spending
 anything by default:
 
-- **the canary** — one controlled OpenRouter call, used to prove that a real
+- **the canary** — one controlled logical completion, used to prove that a real
   provider call succeeds and satisfies the production contract;
 - **the evaluation harness** — a deterministic comparison of models across a
   fixed corpus of fixtures.
 
-**No live call has been made.** Both tools have only ever been exercised in
-dry-run and with stubbed providers. Nothing in this repository establishes that
-any OpenRouter model works, or how well.
+**No live result is included or claimed here.** Automated verification exercises
+the tools only in dry-run or with stubbed providers. Nothing in this repository
+establishes that any OpenRouter model works, or how well.
 
 ## Safety model
 
@@ -45,6 +45,13 @@ direction:
   normally refused before generation and costs little, but the guard assumes the
   worst.
 
+When the provider returns an authoritative cost, that value is settled. When it
+omits cost but supplies usage, the harness recomputes cost using the price bound
+to that exact model id. If billing remains ambiguous because a request throws,
+usage is missing, or a format fallback has no complete cost, the full reservation
+is charged conservatively and the evaluation stops with
+`provider_cost_unknown`.
+
 The shipped fallback price table describes only the two configured role models
 (`ADVOCATE_MODEL` and `JUDGE_MODEL`). Any other model must be given prices
 explicitly:
@@ -62,9 +69,13 @@ the numbers from the provider's own pricing page; never from memory.
 
 ### What it does
 
-One advocate slot, on one fixture, with one model request. It deliberately does
+One advocate slot, on one fixture, with one logical completion. It deliberately does
 **not** run the 4+3 protocol: judges require four valid advocate arguments, which
 is the whole workflow and a much larger commitment.
+
+One logical completion can issue two HTTP requests when strict structured output
+is rejected and the compatible fallback is used. Both attempts are covered by
+the estimate and reported.
 
 ### Dry run (safe, the default)
 
@@ -95,8 +106,9 @@ npm run live:canary -- --model openai/gpt-4o-mini --max-cost-usd 0.02 --execute
 The result reports success or failure, provider and model, the contract outcome
 with its failure layer and code, input and output tokens, cost, latency, finish
 reason, how many HTTP attempts were made, and whether the `json_schema` to
-`json_object` fallback was used. It prints no prompt, no raw response, and no
-credential.
+  `json_object` fallback was used. It prints no prompt, no raw response, and no
+  credential. Cost is labelled by its accounting basis, and ambiguous billing is
+  shown as a conservative reservation rather than as zero spend.
 
 ## The evaluation harness
 
@@ -122,7 +134,9 @@ conservative maximum cost per model, and sends nothing.
 ### Real execution
 
 ```sh
-npm run eval:models -- --models model-a,model-b --max-cost-usd 2.50 --execute
+npm run eval:models -- --models model-a,model-b \
+  --prices model-a=0.30:1.20,model-b=0.80:2.40 \
+  --max-cost-usd 2.50 --execute
 ```
 
 `--max-cost-usd` bounds the **whole run**, not one call. Before each call the
@@ -130,6 +144,10 @@ harness checks whether that call's conservative maximum still fits the remaining
 budget; if it does not, the run stops before the call and the report records
 `stopped_reason: budget_exhausted`. Cost already incurred is kept in the report,
 including cost for responses that were paid for but failed validation.
+
+If execution was requested but the first reservation did not fit, the report is
+labelled `execution-blocked`, not `real-execution`, and records zero provider
+calls.
 
 Concurrency is available via `--concurrency` and is capped by
 `MAX_INFLIGHT_MODEL_CALLS`. Budget reservation is synchronous, so parallel lanes
@@ -144,7 +162,8 @@ cannot both pass a check that only one of them fits.
 | `--fixtures <id,id>` | Fixture ids. Default: every fixture. |
 | `--max-cost-usd <limit>` | Total approved spend. Required with `--execute`. |
 | `--concurrency <n>` | Parallel calls, capped by configuration. Default: 1. |
-| `--input-price-per-million`, `--output-price-per-million` | Required for unpriced models. |
+| `--input-price-per-million`, `--output-price-per-million` | Prices for one selected model. Both are required together. |
+| `--prices <model=in:out,...>` | Per-model prices for a multi-model comparison. |
 | `--out-dir <path>` | Report destination. Default: `evaluation/results`. |
 | `--execute` | Perform real, paid calls. |
 
@@ -182,8 +201,8 @@ every judge reads.
 - **Stance adherence** — advocates only: did the model argue the stance the
   protocol assigned? A model that drifts to the other side is unusable for this
   role regardless of prose quality.
-- **Decision distribution** — a descriptive count of judge decisions. It is not
-  a vote and is never reduced to a single answer.
+- **Judge decisions** — retained only on their individual call rows. The harness
+  derives no panel-level decision count or preferred result.
 - **Cost, tokens, latency, finish reason, fallback count** — the operational
   budget for a real deliberation.
 

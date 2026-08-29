@@ -47,7 +47,8 @@ export interface EvaluationOptions {
   readonly fixtureIds?: readonly string[] | undefined;
   readonly execute: boolean;
   readonly maxCostUsd?: number | undefined;
-  readonly priceOverride?: PriceOverride | undefined;
+  /** Explicit prices keyed by exact model id. */
+  readonly priceOverrides?: Readonly<Record<string, PriceOverride>> | undefined;
   readonly concurrency?: number | undefined;
 }
 
@@ -75,6 +76,7 @@ export interface EvaluationRun {
   /** Fixture id per outcome, aligned by index into `outcomes`. */
   readonly outcomeFixtures: readonly string[];
   readonly budget: { approvedUsd: number; spentUsd: number; remainingUsd: number; overrun: boolean } | null;
+  readonly callCount: number;
   readonly stoppedReason: string | null;
   readonly structuredOutputMode: string;
   readonly apiKeyPresent: boolean;
@@ -82,6 +84,12 @@ export interface EvaluationRun {
 
 export async function planEvaluation(options: EvaluationOptions, deps: EvaluationDeps): Promise<PlannedCall[]> {
   if (options.models.length === 0) throw new EvaluationError("models_required", "--models requires at least one model id.");
+  if (new Set(options.models).size !== options.models.length) {
+    throw new EvaluationError("duplicate_model", "--models must not contain duplicate model ids.");
+  }
+  if (options.fixtureIds && new Set(options.fixtureIds).size !== options.fixtureIds.length) {
+    throw new EvaluationError("duplicate_fixture", "--fixtures must not contain duplicate fixture ids.");
+  }
   const roles = options.roles ?? (["advocate", "judge"] as const);
   const all = deps.fixtures ?? await loadFixtures();
   const fixtures = selectFixtures(all, options.fixtureIds);
@@ -96,7 +104,7 @@ export async function planEvaluation(options: EvaluationOptions, deps: Evaluatio
         const slot = await buildSlotRequest({
           role: entry.role, instance: entry.instance, fixture, model,
         });
-        const price = resolveModelPrice(entry.role, model, options.priceOverride);
+        const price = resolveModelPrice(entry.role, model, options.priceOverrides?.[model]);
         planned.push({
           model,
           fixtureId: fixture.id,
@@ -126,7 +134,7 @@ export async function runEvaluation(options: EvaluationOptions, deps: Evaluation
   } as const;
 
   if (!options.execute) {
-    return { ...base, mode: "dry-run", outcomes: [], outcomeFixtures: [], budget: null, stoppedReason: null };
+    return { ...base, mode: "dry-run", outcomes: [], outcomeFixtures: [], budget: null, callCount: 0, stoppedReason: null };
   }
 
   if (options.maxCostUsd === undefined) {
@@ -148,6 +156,10 @@ export async function runEvaluation(options: EvaluationOptions, deps: Evaluation
   let stoppedReason: string | null = null;
   let next = 0;
 
+  // First cause wins. Concurrent lanes can fail for different reasons in the
+  // same moment; overwriting would make the reported cause depend on scheduling.
+  const stop = (reason: string): void => { if (stoppedReason === null) stoppedReason = reason; };
+
   const worker = async (): Promise<void> => {
     for (;;) {
       if (stoppedReason !== null) return;
@@ -158,10 +170,11 @@ export async function runEvaluation(options: EvaluationOptions, deps: Evaluation
       try {
         const outcome = await runner.run(call.slot, call.estimate);
         collected.push({ index, outcome, fixtureId: call.fixtureId });
+        if (outcome.costUncertain) { stop("provider_cost_unknown"); return; }
       } catch (error: unknown) {
         // A reservation that does not fit stops the whole evaluation before the
         // call is made. Cost already incurred stays in the ledger and the report.
-        if (error instanceof BudgetError) { stoppedReason = error.code; return; }
+        if (error instanceof BudgetError) { stop(error.code); return; }
         throw error;
       }
     }
@@ -178,6 +191,7 @@ export async function runEvaluation(options: EvaluationOptions, deps: Evaluation
     outcomes: collected.map(entry => entry.outcome),
     outcomeFixtures: collected.map(entry => entry.fixtureId),
     budget: ledger.snapshot(),
+    callCount: runner.callCount,
     stoppedReason,
   };
 }

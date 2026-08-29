@@ -25,18 +25,6 @@ export interface Reservation {
   readonly estimateUsd: number;
 }
 
-/** Reject anything that would make a limit meaningless: empty, zero, negative, or not a number. */
-export function parseBudgetUsd(raw: string | undefined | null): number {
-  if (raw === undefined || raw === null) throw new BudgetError("budget_invalid");
-  const text = String(raw).trim();
-  if (!text) throw new BudgetError("budget_invalid");
-  // Number("") is 0 and Number(" 1 ") is 1, so the shape is checked explicitly.
-  if (!/^\d+(\.\d+)?$/.test(text)) throw new BudgetError("budget_invalid");
-  const value = Number(text);
-  if (!Number.isFinite(value) || value <= 0) throw new BudgetError("budget_invalid");
-  return value;
-}
-
 export class BudgetLedger {
   #approved: number;
   #reserved = 0;
@@ -87,16 +75,17 @@ export class BudgetLedger {
   settle(reservation: Reservation, actualCostUsd: number): void {
     const held = this.#open.get(reservation.id);
     if (held === undefined) throw new BudgetError("budget_invalid");
+    if (!Number.isFinite(actualCostUsd) || actualCostUsd < 0) throw new BudgetError("budget_invalid");
     this.#open.delete(reservation.id);
     this.#reserved -= held;
-    const cost = Number.isFinite(actualCostUsd) && actualCostUsd > 0 ? actualCostUsd : 0;
-    this.#spent += cost;
+    this.#spent += actualCostUsd;
   }
 
-  /** Close a reservation for a call that never reached the provider. */
-  release(reservation: Reservation): void {
-    this.settle(reservation, 0);
-  }
+  // There is deliberately no zero-cost release. Once a request has been
+  // dispatched its billing is not knowable from this side, so every reservation
+  // is closed through settle() with either an authoritative cost or the full
+  // conservative hold. A release helper on this class would be an invitation to
+  // close a dispatched call at zero and silently understate spend.
 
   snapshot(): { approvedUsd: number; spentUsd: number; remainingUsd: number; overrun: boolean } {
     return {

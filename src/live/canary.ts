@@ -63,7 +63,7 @@ export interface CanaryPlan {
   readonly estimate: CostEstimate;
   readonly approvedMaxCostUsd: number | null;
   readonly apiKeyPresent: boolean;
-  readonly networkCallPerformed: boolean;
+  readonly providerCallAttempted: boolean;
 }
 
 export interface CanaryReport {
@@ -80,7 +80,12 @@ export interface CanaryDeps {
   readonly fixtures?: readonly Fixture[];
 }
 
-async function buildPlan(options: CanaryOptions, deps: CanaryDeps): Promise<CanaryPlan> {
+interface BuiltCanary {
+  readonly plan: CanaryPlan;
+  readonly slot: Awaited<ReturnType<typeof buildSlotRequest>>;
+}
+
+async function buildPlan(options: CanaryOptions, deps: CanaryDeps): Promise<BuiltCanary> {
   if (!SUPPORTED_ROLES.includes(options.role)) {
     throw new CanaryError(
       "unsupported_role",
@@ -111,36 +116,39 @@ async function buildPlan(options: CanaryOptions, deps: CanaryDeps): Promise<Cana
   });
 
   return {
-    mode: options.execute ? "execute" : "dry-run",
-    role: options.role,
-    slot: slot.slot,
-    instance: options.instance,
-    assignedStance: slot.request.stance,
-    fixtureId: chosen.id,
-    promptName: slot.promptName,
-    promptVersion: slot.promptVersion,
-    promptHash: slot.promptHash,
-    lensLabel: slot.lensLabel,
-    model: options.model,
-    structuredOutputMode: config.STRUCTURED_OUTPUT,
-    maxOutputTokens: slot.request.maxOutputTokens,
-    timeoutMs: slot.request.timeoutMs,
-    temperature: slot.request.temperature,
-    estimate,
-    approvedMaxCostUsd: options.maxCostUsd ?? null,
-    apiKeyPresent: Boolean((deps.apiKey ?? config.OPENROUTER_API_KEY).trim()),
-    networkCallPerformed: false,
+    slot,
+    plan: {
+      mode: options.execute ? "execute" : "dry-run",
+      role: options.role,
+      slot: slot.slot,
+      instance: options.instance,
+      assignedStance: slot.request.stance,
+      fixtureId: chosen.id,
+      promptName: slot.promptName,
+      promptVersion: slot.promptVersion,
+      promptHash: slot.promptHash,
+      lensLabel: slot.lensLabel,
+      model: options.model,
+      structuredOutputMode: config.STRUCTURED_OUTPUT,
+      maxOutputTokens: slot.request.maxOutputTokens,
+      timeoutMs: slot.request.timeoutMs,
+      temperature: slot.request.temperature,
+      estimate,
+      approvedMaxCostUsd: options.maxCostUsd ?? null,
+      apiKeyPresent: Boolean((deps.apiKey ?? config.OPENROUTER_API_KEY).trim()),
+      providerCallAttempted: false,
+    },
   };
 }
 
 /** Plan only. Guaranteed to perform no network call. */
 export async function planCanary(options: CanaryOptions, deps: CanaryDeps): Promise<CanaryReport> {
-  const plan = await buildPlan({ ...options, execute: false }, deps);
+  const { plan } = await buildPlan({ ...options, execute: false }, deps);
   return { plan, outcome: null, budget: null, callCount: 0 };
 }
 
 export async function runCanary(options: CanaryOptions, deps: CanaryDeps): Promise<CanaryReport> {
-  const plan = await buildPlan(options, deps);
+  const { plan, slot } = await buildPlan(options, deps);
   if (!options.execute) return { plan, outcome: null, budget: null, callCount: 0 };
 
   // --- gates, in the order that fails most cheaply first --------------------
@@ -166,16 +174,10 @@ export async function runCanary(options: CanaryOptions, deps: CanaryDeps): Promi
 
   const ledger = new BudgetLedger(options.maxCostUsd);
   const runner = new GuardedRunner({ provider: deps.provider, ledger, maxCalls: MAX_CANARY_CALLS });
-  const slot = await buildSlotRequest({
-    role: options.role,
-    instance: options.instance,
-    fixture: (deps.fixtures ?? await loadFixtures()).find(f => f.id === plan.fixtureId)!,
-    model: options.model,
-  });
   const outcome = await runner.run(slot, plan.estimate);
 
   return {
-    plan: { ...plan, networkCallPerformed: true },
+    plan: { ...plan, providerCallAttempted: true },
     outcome,
     budget: ledger.snapshot(),
     callCount: runner.callCount,
@@ -222,7 +224,7 @@ export function formatCanary(report: CanaryReport): string {
   lines.push(`  contract              ${o.contract.valid ? "valid" : `failed at ${o.contract.layer} ${o.contract.code}`}`);
   if (o.stanceAdherence !== null) lines.push(`  stance adherence      ${o.stanceAdherence ? "matched" : "mismatched"}`);
   lines.push(`  input / output tokens ${o.inputTokens} / ${o.outputTokens}`);
-  lines.push(`  cost                  ${money(o.costUsd)}`);
+  lines.push(`  accounted cost        ${money(o.costUsd)} (${o.costBasis}${o.costUncertain ? ", exact billing unavailable" : ""})`);
   lines.push(`  latency               ${o.latencyMs === null ? "n/a" : `${o.latencyMs} ms`}`);
   lines.push(`  finish reason         ${o.finishReason ?? "n/a"}`);
   lines.push(`  http attempts         ${o.httpAttempts ?? "n/a"}`);

@@ -66,15 +66,16 @@ The command runs strict type checks, protocol and regression tests, and a produc
 Two commands prepare for paid inference without spending anything by default:
 
 ```sh
-npm run live:canary     # plan one controlled OpenRouter call; sends nothing
+npm run live:canary     # plan one controlled logical completion; sends nothing
 npm run eval:models -- --models <model-id>   # plan a model comparison; sends nothing
 ```
 
 Both are dry-run unless `--execute` is supplied together with `--max-cost-usd`,
 and both refuse to run when the conservative cost estimate does not fit the
 approved limit. The API key is read from the server environment only and never
-accepted as an argument. No live OpenRouter call has been made from this
-repository. See [LIVE_EVALUATION.md](./LIVE_EVALUATION.md).
+accepted as an argument. Automated verification performs no live OpenRouter call,
+and the repository contains no live evaluation evidence. See
+[LIVE_EVALUATION.md](./LIVE_EVALUATION.md).
 
 ## API
 
@@ -97,6 +98,6 @@ repository. See [LIVE_EVALUATION.md](./LIVE_EVALUATION.md).
 
 ## Current readiness
 
-The full 4+3 orchestration exists and is usable in scripted mode. Live model agents are not active by default: the repository uses `MODEL_ADAPTER=scripted`, and no OpenRouter key is committed. The canary and evaluation harness are implemented but have never been run against a live provider, so live model quality remains unmeasured. Public deployment still requires an explicit privacy, authentication, operations, and live-model evaluation decision.
+The full 4+3 orchestration exists and is usable in scripted mode. Live model agents are not active by default: the repository uses `MODEL_ADAPTER=scripted`, and no OpenRouter key is committed. The canary and evaluation harness are implemented, but no tracked evidence establishes a successful live-provider run, so live model quality remains unmeasured. Public deployment still requires an explicit privacy, authentication, operations, and live-model evaluation decision.
 
 For database inspection in the default local Compose setup, use host `localhost`, port `5432`, and database/user/password `tribunal`.

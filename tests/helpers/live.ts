@@ -15,6 +15,7 @@ export interface StubStep {
   readonly fail?: string;
   readonly finishReason?: string;
   readonly costUsd?: number;
+  readonly costSource?: "provider" | "table" | "unknown";
   readonly inputTokens?: number;
   readonly outputTokens?: number;
   readonly formatFallback?: boolean;
@@ -66,6 +67,7 @@ export function stubProvider(steps: readonly StubStep[] = []): StubProvider {
         costUsd: step.costUsd ?? 0.0005,
         latencyMs: 12,
       };
+      if (step.costSource !== undefined) result.costSource = step.costSource;
       if (step.httpAttempts !== undefined) (result as { httpAttempts?: number }).httpAttempts = step.httpAttempts;
       if (step.formatFallback !== undefined) (result as { formatFallback?: boolean }).formatFallback = step.formatFallback;
       return result;

@@ -110,7 +110,8 @@ test("cli: the evaluation dry run writes both reports and calls nothing", async 
     }
     const json = JSON.parse(await readFile(path.join(dir, files.find(f => f.endsWith(".json"))!), "utf8"));
     assert.equal(json.execution, "dry-run");
-    assert.equal(json.verdicts_combined, false);
+    assert.equal(json.provider_calls, 0);
+    assert.ok(!JSON.stringify(json).includes("decision_distribution"));
     assert.ok(json.planned.calls > 0);
   } finally { guard.restore(); }
 });
@@ -129,6 +130,56 @@ test("cli: the evaluation requires at least one model", async () => {
   const result = await capture(evaluate.main, []);
   assert.equal(result.code, 2);
   assert.match(result.stderr, /--models is required/);
+});
+
+test("cli: legacy price flags are rejected for a multi-model run", async () => {
+  const result = await capture(evaluate.main, [
+    "--models", "vendor/one,vendor/two",
+    "--roles", "advocate",
+    "--input-price-per-million", "1",
+    "--output-price-per-million", "2",
+  ]);
+  assert.equal(result.code, 2);
+  assert.match(result.stderr, /apply to one model only/);
+});
+
+test("cli: per-model prices preserve different tariffs", () => {
+  const prices = evaluate.parseModelPrices("vendor/cheap=1:2,vendor/expensive:free=10:20");
+  assert.deepEqual(prices, {
+    "vendor/cheap": { inputPerMillion: 1, outputPerMillion: 2 },
+    "vendor/expensive:free": { inputPerMillion: 10, outputPerMillion: 20 },
+  });
+});
+
+test("cli: a blocked execute request is not labelled real execution", async () => {
+  const guard = forbidFetch();
+  const dir = await mkdtemp(path.join(tmpdir(), "tribunal-eval-blocked-"));
+  try {
+    const result = await capture(evaluate.main, [
+      "--models", "openai/gpt-4o-mini",
+      "--roles", "advocate",
+      "--execute",
+      "--max-cost-usd", "0.000001",
+      "--out-dir", dir,
+    ]);
+    assert.equal(result.code, 1);
+    assert.equal(guard.called(), 0);
+    const file = (await readdir(dir)).find(name => name.endsWith(".json"))!;
+    const report = JSON.parse(await readFile(path.join(dir, file), "utf8"));
+    assert.equal(report.execution, "execution-blocked");
+    assert.equal(report.provider_calls, 0);
+  } finally { guard.restore(); }
+});
+
+test("cli: the report path is redacted before it reaches stdout", async () => {
+  const parent = await mkdtemp(path.join(tmpdir(), "tribunal-eval-redact-"));
+  const dir = path.join(parent, SECRET);
+  const result = await capture(evaluate.main, [
+    "--models", "openai/gpt-4o-mini", "--roles", "advocate", "--out-dir", dir,
+  ]);
+  assert.equal(result.code, 0);
+  assertNoSecret(result);
+  assert.match(result.stdout, /\[redacted\]/);
 });
 
 test("cli: help text documents the safety defaults without revealing secrets", async () => {

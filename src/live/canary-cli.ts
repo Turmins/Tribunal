@@ -37,8 +37,9 @@ Options:
 Safety:
   Without --execute nothing is sent. The API key is read from the server
   environment only and is never accepted as an argument, printed, or written to
-  a report. Prompts and raw responses are never printed. At most one model
-  request is issued.
+  a report. Prompts and raw responses are never printed. At most one logical
+  completion is attempted; strict-format compatibility may require a second HTTP
+  request, which is included in the estimate and reported explicitly.
 `;
 
 export async function main(argv: readonly string[]): Promise<number> {

@@ -4,6 +4,7 @@ import { config } from "../config.js";
 import { OpenRouterProvider } from "../providers.js";
 import { ArgError, boolFlag, listFlag, numberFlag, parseArgs, stringFlag } from "./args.js";
 import { EstimateError } from "./estimate.js";
+import type { PriceOverride } from "./estimate.js";
 import { EvaluationError, runEvaluation } from "./evaluation.js";
 import { redact, safeErrorMessage } from "./redact.js";
 import { buildJsonReport, renderMarkdown, stableStringify } from "./report.js";
@@ -19,7 +20,7 @@ import type { Role } from "../types.js";
 
 const FLAGS = [
   "models", "roles", "fixtures", "execute", "max-cost-usd", "concurrency",
-  "input-price-per-million", "output-price-per-million", "out-dir", "help",
+  "input-price-per-million", "output-price-per-million", "prices", "out-dir", "help",
 ] as const;
 
 export const DEFAULT_RESULTS_DIR = path.join("evaluation", "results");
@@ -37,6 +38,8 @@ Options:
   --concurrency <n>              Parallel calls, capped by MAX_INFLIGHT_MODEL_CALLS. Default: 1.
   --input-price-per-million <n>  Required for models absent from the shipped price table.
   --output-price-per-million <n> Required for models absent from the shipped price table.
+                                These two flags are valid only with one model.
+  --prices <model=in:out,...>    Per-model prices for a multi-model comparison.
   --out-dir <path>               Where reports are written. Default: ${DEFAULT_RESULTS_DIR}
   --execute                      Perform real, paid model calls. Omit for a dry run.
   --help                         Show this message.
@@ -47,6 +50,30 @@ Safety:
   contain derived metrics only: no prompt text, no raw response, no reasoning
   text, and never a credential.
 `;
+
+/** Parse `model=input:output` entries without treating ':' inside a model id as a separator. */
+export function parseModelPrices(raw: string): Readonly<Record<string, PriceOverride>> {
+  const prices: Record<string, PriceOverride> = {};
+  for (const entry of raw.split(",").map(value => value.trim()).filter(Boolean)) {
+    const separator = entry.lastIndexOf("=");
+    if (separator <= 0) {
+      throw new EvaluationError("price_map_invalid", "--prices entries must use model=input:output.");
+    }
+    const model = entry.slice(0, separator).trim();
+    const parts = entry.slice(separator + 1).split(":");
+    if (parts.length !== 2 || parts.some(value => !/^\d+(\.\d+)?$/.test(value.trim()))) {
+      throw new EvaluationError("price_map_invalid", `Invalid price entry for ${model}; expected model=input:output.`);
+    }
+    if (Object.hasOwn(prices, model)) {
+      throw new EvaluationError("duplicate_price", `Duplicate price entry for model: ${model}`);
+    }
+    prices[model] = { inputPerMillion: Number(parts[0]), outputPerMillion: Number(parts[1]) };
+  }
+  if (Object.keys(prices).length === 0) {
+    throw new EvaluationError("price_map_invalid", "--prices requires at least one model=input:output entry.");
+  }
+  return prices;
+}
 
 export async function main(argv: readonly string[]): Promise<number> {
   let flags;
@@ -77,6 +104,36 @@ export async function main(argv: readonly string[]): Promise<number> {
     }
     const inputPrice = numberFlag(flags, "input-price-per-million");
     const outputPrice = numberFlag(flags, "output-price-per-million");
+    const mappedPricesRaw = stringFlag(flags, "prices");
+    const legacyPriceRequested = inputPrice !== undefined || outputPrice !== undefined;
+    if (mappedPricesRaw !== undefined && legacyPriceRequested) {
+      throw new EvaluationError("price_flags_conflict", "Use either --prices or the single-model price flags, not both.");
+    }
+    if (legacyPriceRequested && (inputPrice === undefined || outputPrice === undefined)) {
+      throw new EvaluationError("price_invalid", "Both --input-price-per-million and --output-price-per-million are required.");
+    }
+    if (legacyPriceRequested && models.length !== 1) {
+      throw new EvaluationError(
+        "single_model_prices_only",
+        "The input/output price flags apply to one model only. Use --prices model=input:output,... for multiple models.",
+      );
+    }
+    const priceOverrides = mappedPricesRaw !== undefined
+      ? parseModelPrices(mappedPricesRaw)
+      : legacyPriceRequested
+        ? { [models[0]!]: { inputPerMillion: inputPrice, outputPerMillion: outputPrice } }
+        : undefined;
+    if (priceOverrides) {
+      for (const model of Object.keys(priceOverrides)) {
+        if (!models.includes(model)) {
+          throw new EvaluationError("price_model_not_selected", `Price supplied for an unselected model: ${model}`);
+        }
+      }
+    }
+    const concurrency = numberFlag(flags, "concurrency");
+    if (concurrency !== undefined && (!Number.isInteger(concurrency) || concurrency < 1)) {
+      throw new EvaluationError("concurrency_invalid", "--concurrency must be a positive integer.");
+    }
 
     const run = await runEvaluation(
       {
@@ -85,15 +142,17 @@ export async function main(argv: readonly string[]): Promise<number> {
         fixtureIds: listFlag(flags, "fixtures"),
         execute,
         maxCostUsd,
-        concurrency: numberFlag(flags, "concurrency"),
-        priceOverride: inputPrice !== undefined || outputPrice !== undefined
-          ? { inputPerMillion: inputPrice, outputPerMillion: outputPrice }
-          : undefined,
+        concurrency,
+        priceOverrides,
       },
       { provider: new OpenRouterProvider() },
     );
 
-    const execution: ExecutionKind = run.mode === "dry-run" ? "dry-run" : "real-execution";
+    const execution: ExecutionKind = run.mode === "dry-run"
+      ? "dry-run"
+      : run.callCount === 0
+        ? "execution-blocked"
+        : "real-execution";
     const report = buildJsonReport({ run, execution, generatedAt: new Date().toISOString() });
     const outDir = stringFlag(flags, "out-dir") ?? DEFAULT_RESULTS_DIR;
     const stamp = new Date().toISOString().replace(/[:.]/g, "-");
@@ -103,7 +162,7 @@ export async function main(argv: readonly string[]): Promise<number> {
     await writeFile(`${base}.md`, redact(renderMarkdown(report)), "utf8");
 
     console.log(redact(renderMarkdown(report)));
-    console.log(`Reports written to ${base}.json and ${base}.md`);
+    console.log(redact(`Reports written to ${base}.json and ${base}.md`));
     if (run.mode === "dry-run") {
       console.log("NO MODEL REQUEST WAS SENT. Add --execute and --max-cost-usd <limit> to run for real.");
     }
@@ -116,7 +175,8 @@ export async function main(argv: readonly string[]): Promise<number> {
     if (error instanceof EstimateError && error.code === "unknown_model_price") {
       console.error(
         "At least one model has no price in the shipped table, so its cost cannot be estimated safely.\n" +
-        "Supply --input-price-per-million and --output-price-per-million from the provider's own pricing page.\n" +
+        "For one model, supply --input-price-per-million and --output-price-per-million.\n" +
+        "For multiple models, supply --prices model=input:output,... using the provider's own pricing page.\n" +
         `The table currently covers only ${config.ADVOCATE_MODEL} (advocate) and ${config.JUDGE_MODEL} (judge).`,
       );
       return 2;

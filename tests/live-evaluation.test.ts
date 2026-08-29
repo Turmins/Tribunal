@@ -16,7 +16,7 @@ const base = {
   models: [MODEL],
   fixtureIds: [TEST_FIXTURE.id],
   execute: false,
-  priceOverride: { inputPerMillion: 1, outputPerMillion: 2 },
+  priceOverrides: { [MODEL]: { inputPerMillion: 1, outputPerMillion: 2 } },
 };
 const deps = (provider: ReturnType<typeof stubProvider>, apiKey = SECRET) =>
   ({ provider, apiKey, fixtures: [TEST_FIXTURE] });
@@ -119,7 +119,7 @@ test("evaluation: concurrency cannot reserve more than the approved budget", asy
   const run = await runEvaluation(
     { ...base, execute: true, maxCostUsd: perCall * 2.5, concurrency: 4 }, deps(provider));
 
-  assert.ok(provider.calls.length <= 2, `at most two calls fit the budget, saw ${provider.calls.length}`);
+  assert.equal(provider.calls.length, 2, "exactly two calls fit before the third reservation stops the run");
   assert.equal(run.stoppedReason, "budget_exhausted");
   assert.ok(run.budget!.spentUsd <= run.budget!.approvedUsd, "concurrent holds never overcommit the limit");
 });
@@ -130,6 +130,74 @@ test("evaluation: a paid invalid response is still counted in spend", async () =
   assert.equal(run.outcomes.length, 7);
   assert.ok(run.outcomes.every(o => !o.ok), "all responses were malformed");
   assert.ok(Math.abs(run.budget!.spentUsd - 0.014) < 1e-9, `expected 7 x 0.002, got ${run.budget!.spentUsd}`);
+});
+
+test("evaluation: an ambiguous provider failure stops the run and consumes its reservation", async () => {
+  const planned = await planEvaluation({ ...base }, deps(stubProvider()));
+  const firstEstimate = planned[0]!.estimate.maxCostUsd;
+  const provider = stubProvider([{ fail: "connection reset after dispatch" }]);
+  const run = await runEvaluation(
+    { ...base, execute: true, maxCostUsd: firstEstimate, concurrency: 1 },
+    deps(provider),
+  );
+  assert.equal(provider.calls.length, 1);
+  assert.equal(run.outcomes.length, 1);
+  assert.equal(run.stoppedReason, "provider_cost_unknown");
+  assert.equal(run.outcomes[0]!.costBasis, "conservative_reservation");
+  assert.equal(run.budget!.spentUsd, firstEstimate);
+});
+
+test("evaluation: table fallback uses the selected model's explicit prices", async () => {
+  const expensive = "vendor/expensive";
+  const options = {
+    models: [expensive],
+    roles: ["advocate" as const],
+    fixtureIds: [TEST_FIXTURE.id],
+    execute: false,
+    priceOverrides: { [expensive]: { inputPerMillion: 50, outputPerMillion: 100 } },
+  };
+  const provider = stubProvider([{ inputTokens: 1000, outputTokens: 300, costUsd: 0.00033 }]);
+  const originalComplete = provider.complete.bind(provider);
+  provider.complete = async request => ({ ...(await originalComplete(request)), costSource: "table" as const });
+  const planned = await planEvaluation(options, deps(provider));
+  const budget = Math.max(...planned.map(call => call.estimate.maxCostUsd)) + 0.002;
+  const run = await runEvaluation({ ...options, execute: true, maxCostUsd: budget }, deps(provider));
+
+  assert.equal(provider.calls.length, 1, "the recomputed first cost must leave too little budget for a second call");
+  assert.equal(run.outcomes[0]!.costUsd, 0.08);
+  assert.equal(run.outcomes[0]!.costBasis, "estimated_from_usage");
+  assert.equal(run.stoppedReason, "budget_exhausted");
+});
+
+test("evaluation: prices are resolved independently for each model", async () => {
+  const models = ["vendor/cheap", "vendor/expensive"];
+  const planned = await planEvaluation(
+    {
+      models,
+      roles: ["advocate"],
+      fixtureIds: [TEST_FIXTURE.id],
+      execute: false,
+      priceOverrides: {
+        "vendor/cheap": { inputPerMillion: 1, outputPerMillion: 2 },
+        "vendor/expensive": { inputPerMillion: 10, outputPerMillion: 20 },
+      },
+    },
+    deps(stubProvider()),
+  );
+  const cheap = planned.find(call => call.model === "vendor/cheap")!;
+  const expensive = planned.find(call => call.model === "vendor/expensive")!;
+  assert.ok(expensive.estimate.maxCostUsd > cheap.estimate.maxCostUsd * 9);
+});
+
+test("evaluation: duplicate models and fixtures are rejected before execution", async () => {
+  await assert.rejects(
+    () => planEvaluation({ ...base, models: [MODEL, MODEL] }, deps(stubProvider())),
+    /duplicate model ids/,
+  );
+  await assert.rejects(
+    () => planEvaluation({ ...base, fixtureIds: [TEST_FIXTURE.id, TEST_FIXTURE.id] }, deps(stubProvider())),
+    /duplicate fixture ids/,
+  );
 });
 
 // --- reports --------------------------------------------------------------
@@ -159,7 +227,7 @@ test("evaluation: reports record the metrics the harness promises", async () => 
   assert.equal(model.contract.attempted, 7);
   assert.equal(model.contract.successRate, 1);
   assert.equal(model.stance_adherence_rate, 1, "every advocate argued its assigned stance");
-  assert.deepEqual(model.decision_distribution, { justified: 2, not_justified: 1, unavailable: 0 });
+  assert.ok(!("decision_distribution" in model), "judge decisions must not be counted");
   const fixture = model.fixtures[0];
   assert.equal(fixture.fixture_id, TEST_FIXTURE.id);
   assert.equal(fixture.judge_texts_compared, 3);
@@ -169,7 +237,7 @@ test("evaluation: reports record the metrics the harness promises", async () => 
     "output_tokens", "cost_usd", "latency_ms", "finish_reason", "contract_layer", "contract_code"]) {
     assert.ok(field in row, `slot rows must record ${field}`);
   }
-  assert.equal(report.verdicts_combined, false);
+  assert.equal(report.provider_calls, 7);
 });
 
 test("evaluation: reports never contain reasoning text, prompts, or credentials", async () => {
@@ -205,6 +273,9 @@ test("evaluation: the report distinguishes dry run, mocked verification, and rea
 
   const real = buildJsonReport({ run, execution: "real-execution", generatedAt: "t" }) as any;
   assert.equal(real.execution, "real-execution");
+
+  const blocked = buildJsonReport({ run: dry, execution: "execution-blocked", generatedAt: "t" }) as any;
+  assert.equal(blocked.execution, "execution-blocked");
 });
 
 test("evaluation: the report computes no combined verdict", async () => {
@@ -215,6 +286,7 @@ test("evaluation: the report computes no combined verdict", async () => {
     const keyLike = new RegExp(`"[^"]*${banned}[^"]*"\\s*:`, "i");
     assert.ok(!keyLike.test(text), `no report key may contain ${banned}`);
   }
+  assert.ok(!text.includes("decision_distribution"), "the report must not count judge decisions");
 });
 
 // --- metrics --------------------------------------------------------------
@@ -227,4 +299,27 @@ test("evaluation: the diversity proxy is deterministic and bounded", () => {
   assert.equal(first, textDiversityProxy(texts), "the proxy must be deterministic");
   assert.ok(first !== null && first > 0 && first < 1);
   assert.equal(textDiversityProxy(["only one"]), null, "a single text has no pairwise distance");
+});
+
+const isTerminalStopCause = (reason: string | null): boolean =>
+  reason === "budget_exhausted" || reason === "provider_cost_unknown";
+
+test("evaluation: the reported stop cause does not depend on lane scheduling", async () => {
+  // Two lanes can fail for different reasons in the same run: one lane returns
+  // an ambiguous cost while another cannot fit its reservation. Whichever cause
+  // is raised first must be the one reported, every time — otherwise the report
+  // records whichever lane happened to finish last.
+  const planned = await planEvaluation({ ...base }, deps(stubProvider()));
+  const perCall = planned[0]!.estimate.maxCostUsd;
+  const reasons = new Set<string | null>();
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const run = await runEvaluation(
+      { ...base, execute: true, maxCostUsd: perCall * 1.5, concurrency: 2 },
+      deps(stubProvider([{ costSource: "unknown", delayMs: 5 }])),
+    );
+    reasons.add(run.stoppedReason);
+    assert.ok(run.budget!.spentUsd <= run.budget!.approvedUsd, "spend never exceeds the approved limit");
+  }
+  assert.equal(reasons.size, 1, `the stop cause must be stable, saw: ${[...reasons].join(", ")}`);
+  assert.ok(isTerminalStopCause([...reasons][0] ?? null), `unexpected stop cause: ${[...reasons][0]}`);
 });

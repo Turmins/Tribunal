@@ -1,6 +1,6 @@
 import { round } from "./budget.js";
 import type { EvaluationRun } from "./evaluation.js";
-import { contractStats, decisionDistribution, round4, sortKeys, stanceAdherenceRate, textDiversityProxy } from "./metrics.js";
+import { contractStats, round4, sortKeys, stanceAdherenceRate, textDiversityProxy } from "./metrics.js";
 import type { GuardedOutcome } from "./run.js";
 
 /**
@@ -17,13 +17,13 @@ import type { GuardedOutcome } from "./run.js";
  *    timestamp, is injected by the caller rather than read from the clock.
  */
 
-export const REPORT_FORMAT = "tribunal-evaluation/1.0.0";
+export const REPORT_FORMAT = "tribunal-evaluation/1.1.0";
 
 /**
  * How the numbers were produced. A report that cannot distinguish a planned run
  * from a stubbed one from a paid one is worse than no report.
  */
-export type ExecutionKind = "dry-run" | "mocked-verification" | "real-execution";
+export type ExecutionKind = "dry-run" | "mocked-verification" | "execution-blocked" | "real-execution";
 
 export interface ReportInput {
   readonly run: EvaluationRun;
@@ -60,6 +60,8 @@ function slotRow(outcome: GuardedOutcome, fixtureId: string): JsonReport {
     contract_code: outcome.contract.code,
     contract_layer: outcome.contract.layer,
     contract_valid: outcome.contract.valid,
+    cost_basis: outcome.costBasis,
+    cost_uncertain: outcome.costUncertain,
     cost_usd: outcome.costUsd,
     decision: outcome.decision,
     estimated_max_cost_usd: outcome.estimatedMaxCostUsd,
@@ -104,7 +106,6 @@ export function buildJsonReport(input: ReportInput): JsonReport {
           .map(entry => slotRow(entry.outcome, entry.fixtureId))
           .sort((a, b) => String(a["slot"]).localeCompare(String(b["slot"]))),
         contract: contractStats(rows.map(entry => entry.outcome)),
-        decision_distribution: decisionDistribution(rows.map(entry => entry.outcome)),
         fixture_id: fixtureId,
         judge_text_diversity_proxy: textDiversityProxy(judgeTexts),
         judge_texts_compared: judgeTexts.length,
@@ -117,7 +118,6 @@ export function buildJsonReport(input: ReportInput): JsonReport {
       cost_usd: round(outcomes.reduce((sum, o) => sum + o.costUsd, 0)),
       planned_calls: plannedForModel.length,
       planned_max_cost_usd: round(plannedForModel.reduce((sum, call) => sum + call.estimate.maxCostUsd, 0)),
-      decision_distribution: decisionDistribution(outcomes),
       finish_reasons: tally(outcomes.map(o => o.finishReason)),
       fixtures,
       format_fallback_count: outcomes.filter(o => o.formatFallback === true).length,
@@ -143,11 +143,11 @@ export function buildJsonReport(input: ReportInput): JsonReport {
       calls: run.planned.length,
       conservative_max_cost_usd: run.plannedMaxCostUsd,
     },
+    provider_calls: run.callCount,
     report_format: REPORT_FORMAT,
     roles_evaluated: [...run.roles].sort(),
     stopped_reason: run.stoppedReason,
     structured_output_mode: run.structuredOutputMode,
-    verdicts_combined: false,
   };
 }
 
@@ -177,7 +177,7 @@ const HOW_TO_READ: readonly string[] = [
   "",
   "- **Contract pass** is the share of calls whose output satisfied the production validator. It says nothing about whether the reasoning was good.",
   "- **Stance adherence** applies to advocates only: it is the share of validated advocates that argued the stance the protocol assigned.",
-  "- **Judge decisions** is a descriptive count. Tribunal never combines judge decisions, and neither does this report: no majority, winner, consensus, or merged verdict is computed anywhere.",
+  "- **Judge decisions** remain individual call records. The report does not derive panel-level decision counts or a preferred result.",
   "- **Diversity proxy** is the mean pairwise Jaccard distance between judge reasoning vocabularies. It is a proxy for wording difference, not evidence of reasoning quality or of real lens differentiation. Two judges can reason very differently in similar words, and boilerplate rephrasing can score high. Use it only to decide which outputs deserve a human read.",
   "",
   "No model was used to grade another model. Every number above is fixed arithmetic over recorded run outcomes.",
@@ -197,6 +197,7 @@ export function renderMarkdown(report: JsonReport): string {
   lines.push(`- Mode: \`${report["mode"]}\``);
   lines.push(`- Structured output: \`${report["structured_output_mode"]}\``);
   lines.push(`- Planned calls: ${planned.calls} (conservative maximum ${money(planned.conservative_max_cost_usd)})`);
+  lines.push(`- Provider calls attempted: ${report["provider_calls"]}`);
   lines.push(`- Fixtures: ${(report["fixtures_evaluated"] as string[]).join(", ")}`);
   if (report["stopped_reason"]) lines.push(`- Stopped early: \`${report["stopped_reason"]}\``);
   if (budget) {
@@ -210,7 +211,9 @@ export function renderMarkdown(report: JsonReport): string {
   if (!hasOutcomes) {
     lines.push(report["execution"] === "dry-run"
       ? "No model request was sent. This report describes the planned work and its conservative cost ceiling only."
-      : "No call produced an outcome, so only the planned work is described below.");
+      : report["execution"] === "execution-blocked"
+        ? "Execution was blocked before the provider was called. Only the planned work is described below."
+        : "No call produced an outcome, so only the planned work is described below.");
     lines.push("");
     lines.push("## Planned work");
     lines.push("");
@@ -228,15 +231,14 @@ export function renderMarkdown(report: JsonReport): string {
 
   lines.push("## Per-model summary");
   lines.push("");
-  lines.push("| Model | Contract pass | Stance adherence | Judge decisions (J / NJ / n/a) | Input tok | Output tok | Cost | Fallbacks |");
-  lines.push("| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |");
+  lines.push("| Model | Contract pass | Stance adherence | Input tok | Output tok | Cost | Fallbacks |");
+  lines.push("| --- | ---: | ---: | ---: | ---: | ---: | ---: |");
   for (const model of models) {
     const contract = model["contract"] as { successRate: number | null; valid: number; attempted: number };
-    const dist = model["decision_distribution"] as { justified: number; not_justified: number; unavailable: number };
     const input = model["input_tokens"] as { total: number };
     const output = model["output_tokens"] as { total: number };
     lines.push(
-      `| \`${model["model"]}\` | ${pct(contract.successRate)} (${contract.valid}/${contract.attempted}) | ${pct(model["stance_adherence_rate"])} | ${dist.justified} / ${dist.not_justified} / ${dist.unavailable} | ${input.total} | ${output.total} | ${money(model["cost_usd"])} | ${model["format_fallback_count"]} |`,
+      `| \`${model["model"]}\` | ${pct(contract.successRate)} (${contract.valid}/${contract.attempted}) | ${pct(model["stance_adherence_rate"])} | ${input.total} | ${output.total} | ${money(model["cost_usd"])} | ${model["format_fallback_count"]} |`,
     );
   }
   lines.push("");
@@ -252,14 +254,13 @@ export function renderMarkdown(report: JsonReport): string {
       for (const [key, count] of failures) lines.push(`- \`${key}\`: ${count}`);
       lines.push("");
     }
-    lines.push("| Fixture | Contract pass | Judge decisions (J / NJ / n/a) | Diversity proxy |");
-    lines.push("| --- | ---: | ---: | ---: |");
+    lines.push("| Fixture | Contract pass | Diversity proxy |");
+    lines.push("| --- | ---: | ---: |");
     for (const fixture of (model["fixtures"] as JsonReport[])) {
       const c = fixture["contract"] as { successRate: number | null };
-      const d = fixture["decision_distribution"] as { justified: number; not_justified: number; unavailable: number };
       const proxy = fixture["judge_text_diversity_proxy"];
       lines.push(
-        `| \`${fixture["fixture_id"]}\` | ${pct(c.successRate)} | ${d.justified} / ${d.not_justified} / ${d.unavailable} | ${typeof proxy === "number" ? proxy.toFixed(4) : "n/a"} |`,
+        `| \`${fixture["fixture_id"]}\` | ${pct(c.successRate)} | ${typeof proxy === "number" ? proxy.toFixed(4) : "n/a"} |`,
       );
     }
     lines.push("");
