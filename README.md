@@ -4,7 +4,7 @@ Tribunal is a web application for examining a difficult act from opposing perspe
 
 The application never chooses a winner, counts votes, or creates a combined verdict. The human user interprets the disagreement and makes the final decision.
 
-See [ARCHITECTURE.md](./ARCHITECTURE.md) for the implementation design, [TRIBUNAL_CONTEXT_HANDOFF.md](./TRIBUNAL_CONTEXT_HANDOFF.md) for the course requirements, [AGENTS.md](./AGENTS.md) for the model-role layer, and [QA_REPORT.md](./QA_REPORT.md) for current verification evidence.
+See [ARCHITECTURE.md](./ARCHITECTURE.md) for the implementation design, [TRIBUNAL_CONTEXT_HANDOFF.md](./TRIBUNAL_CONTEXT_HANDOFF.md) for the course requirements, [AGENTS.md](./AGENTS.md) for the model-role layer, [LIVE_EVALUATION.md](./LIVE_EVALUATION.md) for the guarded live-evaluation tools, and [QA_REPORT.md](./QA_REPORT.md) for current verification evidence.
 
 ## Implemented
 
@@ -29,7 +29,8 @@ See [ARCHITECTURE.md](./ARCHITECTURE.md) for the implementation design, [TRIBUNA
 - composable, versioned prompt blocks protected by `prompts.lock.json`;
 - three selectable differentiated judge panels plus a non-product control baseline;
 - eight distinct model-response validation layers;
-- strict `json_schema` output with one automatic `json_object` compatibility fallback.
+- strict `json_schema` output with one automatic `json_object` compatibility fallback;
+- a budget-guarded OpenRouter canary and a deterministic model evaluation harness, both dry-run by default.
 
 ## Local setup
 
@@ -60,6 +61,21 @@ npm run check
 
 The command runs strict type checks, protocol and regression tests, and a production build. PostgreSQL integration scenarios run when a database is reachable and are reported as skipped otherwise. No test invokes live OpenRouter.
 
+## Guarded live evaluation
+
+Two commands prepare for paid inference without spending anything by default:
+
+```sh
+npm run live:canary     # plan one controlled OpenRouter call; sends nothing
+npm run eval:models -- --models <model-id>   # plan a model comparison; sends nothing
+```
+
+Both are dry-run unless `--execute` is supplied together with `--max-cost-usd`,
+and both refuse to run when the conservative cost estimate does not fit the
+approved limit. The API key is read from the server environment only and never
+accepted as an argument. No live OpenRouter call has been made from this
+repository. See [LIVE_EVALUATION.md](./LIVE_EVALUATION.md).
+
 ## API
 
 - `GET /api/v1/panels` — list selectable judge panels and their lenses;
@@ -81,6 +97,6 @@ The command runs strict type checks, protocol and regression tests, and a produc
 
 ## Current readiness
 
-The full 4+3 orchestration exists and is usable in scripted mode. Live model agents are not active by default: the repository uses `MODEL_ADAPTER=scripted`, and no OpenRouter key is committed. Public deployment still requires an explicit privacy, authentication, operations, and live-model evaluation decision.
+The full 4+3 orchestration exists and is usable in scripted mode. Live model agents are not active by default: the repository uses `MODEL_ADAPTER=scripted`, and no OpenRouter key is committed. The canary and evaluation harness are implemented but have never been run against a live provider, so live model quality remains unmeasured. Public deployment still requires an explicit privacy, authentication, operations, and live-model evaluation decision.
 
 For database inspection in the default local Compose setup, use host `localhost`, port `5432`, and database/user/password `tribunal`.

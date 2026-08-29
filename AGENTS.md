@@ -157,6 +157,8 @@ Code proves structural differentiation, but it does not prove that a particular 
 
 Live OpenRouter evaluation requires explicit authorization and a spending limit. The default scripted adapter is appropriate for development and demonstrations but cannot establish model quality.
 
+The tooling for that evaluation exists and is documented in [LIVE_EVALUATION.md](./LIVE_EVALUATION.md): a budget-guarded single-call canary and a deterministic harness that measures contract pass rate, validation failure layers, stance adherence, decision distribution, cost, tokens, and latency across a fixed fixture corpus. Both default to dry-run. Neither has been run against a live provider, so no claim about any model's quality is supported yet.
+
 ## 12. Product decisions still requiring an owner
 
 - which OpenRouter models to assign to advocates and judges;
