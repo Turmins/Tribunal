@@ -12,3 +12,4 @@ import { execFileSync } from "node:child_process";
 execFileSync("git", ["config", "core.hooksPath", ".githooks"], { stdio: "inherit" });
 console.log("core.hooksPath is now .githooks");
 console.log("pre-commit and commit-msg will run the cheap verification gates.");
+console.log("pre-push will run the full merge-readiness pack.");

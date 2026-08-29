@@ -1,6 +1,8 @@
 # Verification gates
 
-Nothing enters the main line without passing a gate. The gates run
+The repository supplies local commit and push gates plus a GitHub pull-request
+check. Once the `verification` status is required in the repository ruleset,
+nothing enters the remote main line without passing that check. The gates run
 mechanically, with nobody present, and refuse a change rather than warning
 about it.
 
@@ -35,7 +37,9 @@ This sets `core.hooksPath` to the tracked `.githooks` directory. Hooks living in
 `.git/hooks` are private to one clone and vanish with it, so they cannot be a
 project control; a tracked directory can be.
 
-Run it once per clone. Everyone who runs it gets the same gate.
+Run it once per clone. Everyone who runs it gets the same pre-commit,
+commit-message, and pre-push gates. The pre-push gate runs the complete evidence
+pack rather than only the cheap content scans.
 
 ## The gates
 
@@ -59,14 +63,20 @@ length, because a gate that echoes what it found into a terminal, a CI log, or a
 report has moved the secret rather than caught it.
 
 Tests need to name credential-shaped strings in order to assert that redaction
-works. Those are allowed only when the value says of itself that it is not real
-(`sk-or-v1-value-that-must-never-be-printed`), so the exemption cannot quietly
-cover a live key.
+works. Those are allowed only when the credential body contains a delimited,
+explicit fake marker (`sk-or-v1-value-that-must-never-be-printed`). A random
+alphanumeric occurrence of a word such as `test` does not exempt a value.
+
+Documentation and `.env.example` receive exactly the same scan as source code.
+A key in documentation is still a key in permanent Git history.
 
 ### language
 
-Tracked code, comments, interface copy, and documentation are English only. The
-check runs in process: no shell, no locale dependency, no discarded error.
+The mechanical check refuses Cyrillic in tracked file names, tracked text, and
+commit messages. It runs in process: no shell, no locale dependency, no
+discarded error. A scanner cannot prove that prose is idiomatic English, so
+English-language quality remains part of review rather than a claim made by
+this gate.
 
 ### protected-paths
 
@@ -105,7 +115,9 @@ npm run gate:merge           # full merge-readiness evidence pack
 ```
 
 The staged scope reads staged blobs, not the working tree, because the commit is
-what is being gated.
+what is being gated. `pre-commit` runs the content scans without guessing a
+message that Git has not created yet. `commit-msg` then scans the final message
+and checks protected-path acknowledgements against that exact message.
 
 The tracked scope exists because a file can become non-compliant without being
 touched: a rule tightens, or an earlier commit predates the gate. Only a full
@@ -124,8 +136,8 @@ each is shown by evidence, never by assertion:
 | Item | Established by |
 | --- | --- |
 | Functional completeness | `npm run build`, `tsc --noEmit` |
-| Sound verification | `npm test`, with its pass/fail/skip counts |
-| Engineering hygiene | the gates above, plus `git diff --check` |
+| Sound verification | `npm test`; any failure, skip, cancellation, todo, or missing TAP summary fails the pack |
+| Engineering hygiene | the gates above, a clean working tree, and `git diff --check <base>..HEAD` |
 | Rationale | the commit subjects on the branch |
 | Audit trail | commit count and changed-file summary against the merge base |
 
@@ -135,6 +147,19 @@ is the one item proven by a written statement rather than by a command, because
 intent cannot be executed.
 
 The pack is written to `evaluation/results/`, which is git-ignored.
+
+## Remote merge enforcement
+
+`.github/workflows/verification.yml` runs the full pack for every pull request
+and for feature-branch pushes. It supplies PostgreSQL 16, so the integration
+suite cannot turn into an accepted skip. The workflow uploads the generated
+pack as an artifact even when a check fails.
+
+Repository code can publish a status check but cannot make its own status
+mandatory. In the GitHub repository ruleset for `main`, require the
+`verification` job and disallow bypass for ordinary contributors. Until that
+one-time repository setting is enabled, the workflow reports failures but does
+not itself disable GitHub's merge button.
 
 ## What the gates do not establish
 

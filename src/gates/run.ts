@@ -36,7 +36,9 @@ export function changedPaths(scope: Scope): string[] {
 }
 
 function readContent(scope: Scope, path: string): string | null {
-  if (SKIP_CONTENT.test(path)) return null;
+  // Keep an empty record for skipped binary content so the language gate still
+  // checks the tracked file name.
+  if (SKIP_CONTENT.test(path)) return "";
   try {
     // Staged content, not the working tree: the commit is what is being gated.
     return scope === "staged" ? git(["show", `:${path}`]) : git(["show", `HEAD:${path}`]);
@@ -102,7 +104,11 @@ export interface GateRunReport {
 export function runGates(options: GateRunOptions): GateRunReport {
   const paths = changedPaths(options.scope);
   const files = collectFiles(options.scope, paths);
-  const results: GateResult[] = [secretsGate, languageGate].map(gate => runGate(gate, files));
+  const contentUnderReview = options.commitMessage === undefined
+    ? files
+    : [...files, { path: "COMMIT_EDITMSG", content: options.commitMessage }];
+  const results: GateResult[] = [secretsGate, languageGate]
+    .map(gate => runGate(gate, contentUnderReview));
 
   // Protected paths are evaluated against the path list and the commit message,
   // not file content, so they do not fit the content-gate shape.
@@ -133,7 +139,7 @@ export function runGates(options: GateRunOptions): GateRunReport {
     scope: options.scope,
     ok: results.every(result => result.ok),
     results,
-    filesExamined: files.length,
+    filesExamined: contentUnderReview.length,
     pathsChanged: paths.length,
   };
 }

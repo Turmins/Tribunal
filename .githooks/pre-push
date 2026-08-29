@@ -1,0 +1,4 @@
+#!/bin/sh
+# Run the full evidence pack before changes leave the clone. GitHub repeats the
+# same gate for pull requests; branch protection must require that status.
+exec npm run gate:merge

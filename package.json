@@ -12,7 +12,7 @@
     "start": "node --env-file-if-exists=.env dist/server/index.js",
     "migrate": "node --env-file-if-exists=.env node_modules/node-pg-migrate/bin/node-pg-migrate.js up -m migrations --migration-file-language sql",
     "migrate:down": "node --env-file-if-exists=.env node_modules/node-pg-migrate/bin/node-pg-migrate.js down -m migrations --migration-file-language sql",
-    "test": "node --import tsx --test tests/**/*.test.ts",
+    "test": "node --import ./scripts/block-fetch.mjs --import tsx --test tests/**/*.test.ts",
     "check": "tsc -p tsconfig.json --noEmit && npm test && vite build",
     "prompts:lock": "npm run build:server && node scripts/prompts-lock.mjs",
     "live:canary": "node --env-file-if-exists=.env --import tsx src/live/canary-cli.ts",

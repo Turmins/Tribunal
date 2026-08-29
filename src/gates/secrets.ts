@@ -20,10 +20,10 @@ interface Pattern {
 
 const PATTERNS: readonly Pattern[] = [
   { id: "openrouter_key", regex: /\bsk-or-v1-[A-Za-z0-9_-]{16,}/g, description: "OpenRouter API key" },
-  { id: "openai_key", regex: /\bsk-[A-Za-z0-9]{32,}/g, description: "OpenAI-style API key" },
+  { id: "openai_key", regex: /\bsk-(?!(?:or-v1|ant)-)[A-Za-z0-9_-]{24,}/g, description: "OpenAI-style API key" },
   { id: "anthropic_key", regex: /\bsk-ant-[A-Za-z0-9_-]{16,}/g, description: "Anthropic API key" },
   { id: "aws_access_key", regex: /\bAKIA[0-9A-Z]{16}\b/g, description: "AWS access key id" },
-  { id: "github_token", regex: /\bgh[pousr]_[A-Za-z0-9]{16,}/g, description: "GitHub token" },
+  { id: "github_token", regex: /\b(?:gh[pousr]_[A-Za-z0-9]{16,}|github_pat_[A-Za-z0-9_]{16,})/g, description: "GitHub token" },
   { id: "google_key", regex: /\bAIza[0-9A-Za-z_-]{35}\b/g, description: "Google API key" },
   { id: "private_key_block", regex: /-----BEGIN (?:RSA |EC |OPENSSH |PGP )?PRIVATE KEY-----/g, description: "private key block" },
   { id: "bearer_literal", regex: /\bauthorization"?\s*[:=]\s*"?Bearer\s+[A-Za-z0-9._-]{16,}/gi, description: "hard-coded Authorization header" },
@@ -33,10 +33,7 @@ const PATTERNS: readonly Pattern[] = [
  * A credential-shaped literal is tolerated only when it says of itself that it
  * is not real. Anything else is treated as a live secret.
  */
-const OBVIOUSLY_FAKE = /(not-?real|example|placeholder|redacted|dummy|fake|sample|test|probe|must-never|never-print|value-that|xxxx|000000)/i;
-
-/** Files that legitimately describe credential shapes rather than holding one. */
-const DOCUMENTATION = /(^|\/)(\.env\.example|VERIFICATION\.md|LIVE_EVALUATION\.md)$/;
+const OBVIOUSLY_FAKE = /(?:^|[-_])(?:not-real|example|placeholder|redacted|dummy|fake|sample|test|probe|must-never|never-print|value-that|x{4,}|0{6,})(?:[-_]|$)/i;
 
 const REDACTED_PREVIEW = (match: string): string =>
   `${match.slice(0, 6)}…${match.length} chars`;
@@ -44,7 +41,6 @@ const REDACTED_PREVIEW = (match: string): string =>
 function scan(file: FileUnderReview): Finding[] {
   const findings: Finding[] = [];
   const lines = file.content.split(/\r?\n/);
-  const isDocumentation = DOCUMENTATION.test(file.path);
   for (const pattern of PATTERNS) {
     lines.forEach((line, index) => {
       // A fresh regex per line: the global flag carries lastIndex between calls.
@@ -53,7 +49,6 @@ function scan(file: FileUnderReview): Finding[] {
       while ((match = regex.exec(line)) !== null) {
         const value = match[0];
         if (OBVIOUSLY_FAKE.test(value)) continue;
-        if (isDocumentation && pattern.id !== "private_key_block") continue;
         findings.push({
           gate: "secrets",
           severity: "blocking",

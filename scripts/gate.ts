@@ -28,7 +28,12 @@ const git = (args: string[]): string => {
 interface CommandResult { command: string; ok: boolean; summary: string }
 
 /** Run a verification command and capture a short, quotable result. */
-function runCommand(command: string, args: string[], summarise: (output: string) => string): CommandResult {
+function runCommand(
+  command: string,
+  args: string[],
+  summarise: (output: string) => string,
+  accepts: (output: string) => boolean = () => true,
+): CommandResult {
   const label = [command, ...args].join(" ");
   try {
     const output = execFileSync(command, args, {
@@ -36,19 +41,66 @@ function runCommand(command: string, args: string[], summarise: (output: string)
       maxBuffer: 64 * 1024 * 1024,
       shell: process.platform === "win32",
     });
-    return { command: label, ok: true, summary: summarise(output) };
+    return { command: label, ok: accepts(output), summary: summarise(output) };
   } catch (error: unknown) {
     const output = String((error as { stdout?: string })?.stdout ?? "");
     return { command: label, ok: false, summary: summarise(output) || "command failed" };
   }
 }
 
+export interface TestSummary {
+  readonly passed: number;
+  readonly failed: number;
+  readonly skipped: number;
+  readonly cancelled: number;
+  readonly todo: number;
+}
+
+export function parseTestSummary(output: string): TestSummary | null {
+  const number = (label: string): number | null => {
+    const value = new RegExp(`^# ${label} (\\d+)$`, "m").exec(output)?.[1];
+    return value === undefined ? null : Number(value);
+  };
+  const passed = number("pass");
+  const failed = number("fail");
+  const skipped = number("skipped");
+  const cancelled = number("cancelled");
+  const todo = number("todo");
+  if ([passed, failed, skipped, cancelled, todo].some(value => value === null)) return null;
+  return { passed: passed!, failed: failed!, skipped: skipped!, cancelled: cancelled!, todo: todo! };
+}
+
+export function testOutputAccepted(output: string): boolean {
+  const summary = parseTestSummary(output);
+  return summary !== null
+    && summary.passed > 0
+    && summary.failed === 0
+    && summary.skipped === 0
+    && summary.cancelled === 0
+    && summary.todo === 0;
+}
+
 const testSummary = (output: string): string => {
-  const pass = /^# pass (\d+)$/m.exec(output)?.[1];
-  const fail = /^# fail (\d+)$/m.exec(output)?.[1];
-  const skipped = /^# skipped (\d+)$/m.exec(output)?.[1];
-  return pass ? `${pass} passed, ${fail ?? "?"} failed, ${skipped ?? "?"} skipped` : "no test summary found";
+  const summary = parseTestSummary(output);
+  return summary
+    ? `${summary.passed} passed, ${summary.failed} failed, ${summary.skipped} skipped, ${summary.cancelled} cancelled, ${summary.todo} todo`
+    : "no test summary found";
 };
+
+function resolveBase(branch: string): { ref: string; commit: string } | null {
+  const candidates = [
+    process.env.TRIBUNAL_GATE_BASE,
+    process.env.GITHUB_BASE_REF ? `origin/${process.env.GITHUB_BASE_REF}` : undefined,
+    branch === "main" ? "origin/main" : "main",
+    "origin/main",
+  ].filter((candidate): candidate is string => Boolean(candidate));
+  for (const ref of [...new Set(candidates)]) {
+    if (!git(["rev-parse", "--verify", `${ref}^{commit}`])) continue;
+    const commit = git(["merge-base", ref, "HEAD"]);
+    if (commit) return { ref, commit };
+  }
+  return null;
+}
 
 function cheapGates(scope: "staged" | "tracked", commitMessage: string | undefined): number {
   const report = runGates(commitMessage === undefined ? { scope } : { scope, commitMessage });
@@ -59,7 +111,8 @@ function cheapGates(scope: "staged" | "tracked", commitMessage: string | undefin
 async function mergePack(): Promise<number> {
   const branch = git(["rev-parse", "--abbrev-ref", "HEAD"]) || "(detached)";
   const head = git(["rev-parse", "--short", "HEAD"]) || "(unknown)";
-  const base = git(["merge-base", "main", "HEAD"]) || "(unknown)";
+  const resolvedBase = resolveBase(branch);
+  const base = resolvedBase?.commit ?? "";
 
   console.log("Collecting merge-readiness evidence. Every item below is executed, not asserted.\n");
 
@@ -69,11 +122,16 @@ async function mergePack(): Promise<number> {
 
   const typecheck = runCommand("npx", ["tsc", "-p", "tsconfig.json", "--noEmit"],
     output => (output.trim() ? output.trim().split("\n").slice(0, 3).join(" ") : "no type errors"));
-  const tests = runCommand("npm", ["test"], testSummary);
+  const tests = runCommand("npm", ["test"], testSummary, testOutputAccepted);
   const build = runCommand("npm", ["run", "build"],
     output => (/built in/.test(output) ? "server and client bundles built" : "build output not recognised"));
-  const whitespace = runCommand("git", ["diff", "--check"],
-    output => (output.trim() ? "whitespace errors found" : "no whitespace errors"));
+  const whitespace = base
+    ? runCommand("git", ["diff", "--check", `${base}..HEAD`],
+      output => (output.trim() ? "whitespace errors found" : "no whitespace errors in committed branch changes"))
+    : { command: "git diff --check <base>..HEAD", ok: false, summary: "base reference unavailable" };
+  const cleanTree = runCommand("git", ["status", "--porcelain"],
+    output => (output.trim() ? "uncommitted changes are present" : "working tree clean"),
+    output => output.trim().length === 0);
 
   const evidence = (result: CommandResult): Evidence =>
     ({ command: result.command, result: result.summary, passed: result.ok });
@@ -86,8 +144,8 @@ async function mergePack(): Promise<number> {
     passed: gateReport.ok,
   };
 
-  const commitCount = git(["rev-list", "--count", `${base}..HEAD`]) || "0";
-  const changedFiles = git(["diff", "--stat", `${base}..HEAD`]).split("\n").pop() ?? "";
+  const commitCount = base ? git(["rev-list", "--count", `${base}..HEAD`]) || "0" : "0";
+  const changedFiles = base ? git(["diff", "--stat", `${base}..HEAD`]).split("\n").pop() ?? "" : "";
 
   const sections: PackSection[] = [
     {
@@ -103,12 +161,12 @@ async function mergePack(): Promise<number> {
     {
       item: "engineering_hygiene",
       statement: null,
-      evidence: [gateEvidence, evidence(whitespace)],
+      evidence: [gateEvidence, evidence(whitespace), evidence(cleanTree)],
     },
     {
       item: "rationale",
       // Intent cannot be executed. The commit bodies on this branch are the record.
-      statement: git(["log", "--format=%s", `${base}..HEAD`]).split("\n").filter(Boolean)
+      statement: (base ? git(["log", "--format=%s", `${base}..HEAD`]) : "").split("\n").filter(Boolean)
         .map(subject => `- ${subject}`).join("\n") || null,
       evidence: [],
     },
@@ -116,15 +174,15 @@ async function mergePack(): Promise<number> {
       item: "audit_trail",
       statement: null,
       evidence: [{
-        command: `git rev-list --count ${base.slice(0, 7)}..HEAD`,
+        command: `git rev-list --count ${base ? base.slice(0, 7) : "<base>"}..HEAD`,
         result: `${commitCount} commit(s) on this branch;${changedFiles ? ` ${changedFiles.trim()}` : " no file changes"}`,
-        passed: Number(commitCount) > 0,
+        passed: Boolean(base) && Number(commitCount) > 0,
       }],
     },
   ];
 
   const pack: MergeReadinessPack = {
-    branch, headCommit: head, baseCommit: base.slice(0, 7),
+    branch, headCommit: head, baseCommit: base ? base.slice(0, 7) : "(unknown)",
     generatedAt: new Date().toISOString(), sections,
   };
   const assessment = assessPack(pack);

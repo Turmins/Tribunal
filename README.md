@@ -59,17 +59,19 @@ The default `MODEL_ADAPTER=scripted` mode requires no OpenRouter account and inc
 npm run check
 ```
 
-Mechanical gates refuse a commit that carries a credential, non-English tracked
-content, or an unannounced change to prompts, the prompt lock, or migration
-history. Install them once per clone:
+Mechanical gates refuse a commit or commit message that carries a credential or
+Cyrillic text, and refuse unannounced changes to prompts, the prompt lock, or
+migration history. Install them once per clone:
 
 ```sh
 npm run hooks:install
 ```
 
-`npm run gate:merge` collects the merge-readiness evidence pack. Every gate
-carries a self-test and must prove it can fail before it is allowed to report a
-clean result. See [VERIFICATION.md](./VERIFICATION.md).
+The installed pre-push hook runs `npm run gate:merge`. GitHub pull requests run
+the same command with PostgreSQL through the `verification` status check. Make
+that status required in the repository ruleset before treating it as a remote
+merge blocker. Every gate carries a self-test and must prove it can fail before
+it is allowed to report a clean result. See [VERIFICATION.md](./VERIFICATION.md).
 
 The command runs strict type checks, protocol and regression tests, and a production build. PostgreSQL integration scenarios run when a database is reachable and are reported as skipped otherwise. No test invokes live OpenRouter.
 

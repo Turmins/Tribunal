@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
+import { parseTestSummary, testOutputAccepted } from "../scripts/gate.js";
 import { secretsGate } from "../src/gates/secrets.js";
 import { languageGate } from "../src/gates/language.js";
 import {
@@ -7,6 +9,7 @@ import {
 } from "../src/gates/protected-paths.js";
 import { PACK_ITEMS, assessPack, renderPack } from "../src/gates/pack.js";
 import type { MergeReadinessPack, PackSection } from "../src/gates/pack.js";
+import { runGates } from "../src/gates/run.js";
 import type { FileUnderReview } from "../src/gates/types.js";
 
 const file = (path: string, content: string): FileUnderReview => ({ path, content });
@@ -61,6 +64,29 @@ test("gates: a self-declared fake fixture value is allowed", () => {
   assert.equal(findings.length, 0);
 });
 
+test("gates: documentation and env examples receive the same secret scan", () => {
+  for (const path of [".env.example", "LIVE_EVALUATION.md", "VERIFICATION.md"]) {
+    const findings = secretsGate.run([file(path, `OPENROUTER_API_KEY=${LIVE_KEY}`)]);
+    assert.equal(findings.length, 1, `${path} must not be a secret-scanning blind spot`);
+  }
+});
+
+test("gates: a live-looking value is not exempted by an embedded fake word", () => {
+  const collision = `sk-or-v1-${"A1b2testC3d4E5f6G7h8I9j0"}`;
+  const findings = secretsGate.run([file("src/leak.ts", collision)]);
+  assert.equal(findings.length, 1, "an alphanumeric substring is not an explicit fake marker");
+});
+
+test("gates: project-scoped OpenAI and fine-grained GitHub token shapes are recognised", () => {
+  const values = [
+    `sk-${"proj-"}${"A1b2C3d4E5f6G7h8".repeat(2)}`,
+    `github_${"pat_"}${"A1b2C3d4E5f6G7h8".repeat(2)}`,
+  ];
+  for (const value of values) {
+    assert.equal(secretsGate.run([file("src/leak.ts", value)]).length, 1);
+  }
+});
+
 test("gates: ordinary source is not flagged", () => {
   const findings = secretsGate.run([
     file("src/ok.ts", "export const rate = 0.15; // price per million input tokens"),
@@ -84,6 +110,26 @@ test("gates: English content passes and binary content is skipped", () => {
   assert.equal(languageGate.run([file("src/ok.ts", "const greeting = \"Hello\";")]).length, 0);
   // A NUL byte marks binary content; scanning it line by line is meaningless.
   assert.equal(languageGate.run([file("assets/logo.bin", "before\u0000after")]).length, 0);
+});
+
+test("gates: the final commit message is scanned for secrets and Cyrillic", () => {
+  const secretReport = runGates({ scope: "staged", commitMessage: `feat: x\n\nkey=${LIVE_KEY}` });
+  const secretResult = secretReport.results.find(result => result.gate === "secrets");
+  assert.ok(secretResult?.findings.some(finding => finding.file === "COMMIT_EDITMSG"));
+
+  const languageReport = runGates({
+    scope: "staged",
+    commitMessage: `feat: \u041D\u0435\u0430\u043D\u0433\u043B\u0438\u0439\u0441\u043A\u0438\u0439 \u0442\u0435\u043A\u0441\u0442`,
+  });
+  const languageResult = languageReport.results.find(result => result.gate === "language");
+  assert.ok(languageResult?.findings.some(finding => finding.file === "COMMIT_EDITMSG"));
+});
+
+test("gates: pre-commit defers final-message checks to commit-msg", () => {
+  const preCommit = readFileSync(".githooks/pre-commit", "utf8");
+  const commitMessage = readFileSync(".githooks/commit-msg", "utf8");
+  assert.ok(!preCommit.includes("--commit-message-file"));
+  assert.ok(commitMessage.includes("--commit-message-file \"$1\""));
 });
 
 // --- protected paths ------------------------------------------------------
@@ -191,4 +237,30 @@ test("pack: an unproven item is rendered as unproven", () => {
   const rendered = renderPack(pack, assessPack(pack));
   assert.match(rendered, /_Unproven: no evidence was supplied\._/);
   assert.match(rendered, /not ready/);
+});
+
+test("pack: the test evidence policy rejects skips, cancellations, todos, and missing summaries", () => {
+  const tap = (values: { pass: number; fail?: number; skipped?: number; cancelled?: number; todo?: number }) => [
+    `# pass ${values.pass}`,
+    `# fail ${values.fail ?? 0}`,
+    `# cancelled ${values.cancelled ?? 0}`,
+    `# skipped ${values.skipped ?? 0}`,
+    `# todo ${values.todo ?? 0}`,
+  ].join("\n");
+
+  assert.deepEqual(parseTestSummary(tap({ pass: 165 })), {
+    passed: 165, failed: 0, skipped: 0, cancelled: 0, todo: 0,
+  });
+  assert.equal(testOutputAccepted(tap({ pass: 165 })), true);
+  assert.equal(testOutputAccepted(tap({ pass: 164, skipped: 1 })), false);
+  assert.equal(testOutputAccepted(tap({ pass: 164, cancelled: 1 })), false);
+  assert.equal(testOutputAccepted(tap({ pass: 164, todo: 1 })), false);
+  assert.equal(testOutputAccepted("command produced no TAP summary"), false);
+});
+
+test("gates: repository CI runs the full pack with PostgreSQL available", () => {
+  const workflow = readFileSync(".github/workflows/verification.yml", "utf8");
+  assert.match(workflow, /pull_request:/);
+  assert.match(workflow, /postgres:16-alpine/);
+  assert.match(workflow, /npm run gate:merge/);
 });
