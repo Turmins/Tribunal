@@ -16,6 +16,8 @@
     "check": "tsc -p tsconfig.json --noEmit && npm test && vite build",
     "prompts:lock": "npm run build:server && node scripts/prompts-lock.mjs",
     "live:canary": "node --env-file-if-exists=.env --import tsx src/live/canary-cli.ts",
+    "eval:models": "node --env-file-if-exists=.env --import tsx src/live/eval-cli.ts",
+    "eval:example": "node --import tsx scripts/evaluation-example.ts",
     "build:server": "tsc -p tsconfig.server.json"
   },
   "dependencies": {

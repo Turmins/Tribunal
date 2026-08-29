@@ -5,3 +5,6 @@ node_modules/
 dist/
 coverage/
 .DS_Store
+# Local evaluation output may contain provider metadata and per-run measurements.
+# Only fixtures, the report format, and the synthetic example are tracked.
+evaluation/results/
