@@ -18,13 +18,15 @@ export class OpenRouterProvider implements ModelProvider {
   async complete(request:ModelRequest):Promise<ModelResult>{
     if(!config.OPENROUTER_API_KEY) throw new Error("openrouter_key_missing");
     try {
-      return await this.call(request,config.STRUCTURED_OUTPUT);
+      const result=await this.call(request,config.STRUCTURED_OUTPUT);
+      return {...result,httpAttempts:1,formatFallback:false};
     } catch(error:any){
       // Not every model supports strict schemas. One compatible-mode fallback
       // is cheaper than losing a run; every other failure remains a real failure.
       if(config.STRUCTURED_OUTPUT==="json_schema"&&error?.formatUnsupported){
         console.warn(JSON.stringify({event:"structured_output_fallback",model:request.model,role:request.role}));
-        return await this.call(request,"json_object");
+        const result=await this.call(request,"json_object");
+        return {...result,httpAttempts:2,formatFallback:true};
       }
       throw error;
     }

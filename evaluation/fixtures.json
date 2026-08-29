@@ -1,0 +1,176 @@
+{
+  "format_version": "1.0.0",
+  "description": "Fictional, non-personal indictments for deterministic model evaluation. No fixture records an expected verdict: the product never decides which decision is correct, so a fixture cannot either. Each fixture also carries four fixed reference arguments so that every judge, on every model, reads exactly the same evidence.",
+  "cases": [
+    {
+      "id": "ops-emergency-shutdown",
+      "label": "Emergency shutdown without change approval",
+      "domain": "operations",
+      "ambiguity": "balanced",
+      "note": "Duty to follow change control conflicts with duty to stop an active exploit.",
+      "indictment": {
+        "defendant": "The night shift operations lead",
+        "act": "Shut down the production payment service for ninety minutes to patch an actively exploited vulnerability, without waiting for the change advisory board",
+        "question": "Was the unauthorised emergency shutdown justified?"
+      },
+      "reference_arguments": [
+        {
+          "instance_no": 1,
+          "position": "justified",
+          "reasoning": "The exploit was active, not theoretical, and every minute of delay extended the window in which customer payment data could be taken. The change advisory board meets on a fixed schedule and could not have convened before the next business day. Waiting would have preserved a procedural formality at the cost of the very asset the procedure exists to protect, and the shutdown was bounded to ninety minutes rather than left open-ended."
+        },
+        {
+          "instance_no": 2,
+          "position": "justified",
+          "reasoning": "Change control exists to prevent careless changes, not to forbid all urgent ones, and most such processes contain an explicit emergency path precisely because rigid adherence can cause harm. The lead acted within the spirit of that design, limited the blast radius to a single service, and produced a patched system rather than an ongoing breach. Judged against the outcome the process was written to achieve, the decision served it."
+        },
+        {
+          "instance_no": 3,
+          "position": "not_justified",
+          "reasoning": "The record does not establish that the lead had authority to declare an emergency, and a single operator deciding alone which rules to suspend is exactly the failure mode change control prevents. Ninety minutes of an unavailable payment service is a concrete harm to every customer mid-transaction, and no evidence shows that harm was weighed against a documented alternative such as isolating the affected component."
+        },
+        {
+          "instance_no": 4,
+          "position": "not_justified",
+          "reasoning": "Asserting that the vulnerability was actively exploited is not the same as demonstrating it, and the decision was taken on one person's reading of ambiguous signals during a night shift. Even granting urgency, the choice to take the whole service down rather than escalate to an on-call decision-maker skipped a step that costs minutes. The absence of that escalation makes the act an unreviewed unilateral decision."
+        }
+      ]
+    },
+    {
+      "id": "clinic-triage-reallocation",
+      "label": "Reallocating a scarce clinical resource",
+      "domain": "healthcare governance",
+      "ambiguity": "balanced",
+      "note": "Aggregate benefit conflicts with an existing commitment to an individual.",
+      "indictment": {
+        "defendant": "A regional hospital triage committee",
+        "act": "Reassigned the last available intensive care bed from a patient already scheduled for elective surgery to an emergency arrival with a higher survival probability",
+        "question": "Was the reassignment of the intensive care bed justified?"
+      },
+      "reference_arguments": [
+        {
+          "instance_no": 1,
+          "position": "justified",
+          "reasoning": "Triage exists to allocate scarce capacity by clinical need rather than by order of booking, and an emergency arrival with a higher survival probability represents the greater marginal benefit from the same bed. The elective procedure was, by definition, deferrable without immediate danger. A committee applying a published clinical standard is the accountable structure a hospital is supposed to use for exactly this conflict."
+        },
+        {
+          "instance_no": 2,
+          "position": "justified",
+          "reasoning": "The decision was made by a committee rather than a single clinician, which is the safeguard against ad hoc bedside rationing. Refusing to reassign would not have been neutral: it would have been a decision to let a survivable emergency go untreated in order to honour a scheduling artefact. Holding capacity for a deferrable case while an emergency waits converts an administrative queue into a clinical criterion."
+        },
+        {
+          "instance_no": 3,
+          "position": "not_justified",
+          "reasoning": "The scheduled patient had an existing commitment from the institution and may have already undergone preparation, fasting, or the emotional burden of an imminent operation. Survival probability is an estimate with wide uncertainty, and building an allocation rule on it lets a contested number override a concrete promise. The record does not show the deferred patient was consulted or offered a firm alternative date."
+        },
+        {
+          "instance_no": 4,
+          "position": "not_justified",
+          "reasoning": "The material does not establish that surge capacity, transfer to a partner facility, or a delayed admission was explored before breaking an existing commitment. A committee reaching for the simplest reallocation without evidence of those alternatives has optimised for its own convenience. Repeated, this practice teaches patients that a scheduled procedure is provisional, which itself carries a cost the decision does not appear to weigh."
+        }
+      ]
+    },
+    {
+      "id": "vendor-known-defect-release",
+      "label": "Shipping a release with a known defect",
+      "domain": "product management",
+      "ambiguity": "leaning",
+      "note": "A contractual deadline is weighed against a disclosed but unfixed data-loss defect.",
+      "indictment": {
+        "defendant": "A software vendor's release manager",
+        "act": "Shipped a scheduled release containing a known defect that can silently discard unsaved work, disclosing it only in the release notes rather than delaying the release",
+        "question": "Was shipping the release with the disclosed defect justified?"
+      },
+      "reference_arguments": [
+        {
+          "instance_no": 1,
+          "position": "justified",
+          "reasoning": "The defect was disclosed rather than concealed, which preserves the customer's ability to decide whether to upgrade. Release schedules carry contractual weight, and slipping one imposes real costs on customers who planned around it. A documented, bounded defect in an optional upgrade is a different category from a silent one, and the manager chose transparency over an unannounced delay."
+        },
+        {
+          "instance_no": 2,
+          "position": "justified",
+          "reasoning": "Every non-trivial release ships with known defects; the only question is which ones. Holding a release until a defect list is empty is not a policy any vendor can execute. Given a disclosure in the release notes and a customer base that controls its own upgrade timing, the decision devolved the risk assessment to the parties best placed to make it rather than deciding unilaterally on their behalf."
+        },
+        {
+          "instance_no": 3,
+          "position": "not_justified",
+          "reasoning": "Silent loss of unsaved work is not an ordinary defect: the user receives no signal that anything went wrong, so the harm is undetectable at the moment it occurs. Release notes are read by a small minority of users, which makes this disclosure close to no disclosure in practice. Choosing a schedule over a defect whose defining property is invisibility misjudges what the disclosure achieves."
+        },
+        {
+          "instance_no": 4,
+          "position": "not_justified",
+          "reasoning": "The stated justification rests on a deadline, but the record does not establish a penalty for missing it that is comparable to unrecoverable customer data. No evidence shows that a feature flag, a targeted hold, or a warning inside the product itself was considered. Absent those, the decision reads as protecting a schedule commitment rather than the people the software serves."
+        }
+      ]
+    },
+    {
+      "id": "transit-fare-enforcement",
+      "label": "Suspending fare enforcement during a heatwave",
+      "domain": "public administration",
+      "ambiguity": "balanced",
+      "note": "Public safety benefit conflicts with revenue duty and equal treatment.",
+      "indictment": {
+        "defendant": "A city transport authority",
+        "act": "Suspended fare collection and enforcement across the network for four days during an extreme heatwave so that anyone could reach a cooled space",
+        "question": "Was the four-day suspension of fare enforcement justified?"
+      },
+      "reference_arguments": [
+        {
+          "instance_no": 1,
+          "position": "justified",
+          "reasoning": "Extreme heat kills, and the people least able to pay a fare are frequently those in housing least able to shed heat. A four-day suspension is a bounded intervention timed to a forecast hazard, not an open-ended abandonment of revenue. The authority used an asset it already operates to reduce a foreseeable mortality risk, which is squarely within the public purpose it exists to serve."
+        },
+        {
+          "instance_no": 2,
+          "position": "justified",
+          "reasoning": "Measured against outcomes, the cost is four days of foregone fare revenue and the benefit is unrestricted access to cooled transit during a lethal weather event. Enforcement itself consumes staff who were more useful assisting passengers in distress. The suspension also removed the hesitation a marginal rider feels before boarding, which is precisely the hesitation that produces avoidable harm in a heatwave."
+        },
+        {
+          "instance_no": 3,
+          "position": "not_justified",
+          "reasoning": "Fare revenue funds the service, and a blanket suspension transfers that cost to every future rider rather than to the emergency budget where it belongs. The material does not establish that fares were the binding constraint on reaching a cooled space, as opposed to distance, mobility, or awareness. A universal giveaway is a blunt instrument aimed at a target that has not been shown to exist in that form."
+        },
+        {
+          "instance_no": 4,
+          "position": "not_justified",
+          "reasoning": "No evidence shows the authority considered a targeted measure such as free travel for concession holders or dedicated cooling shuttles, which would have addressed the stated risk at a fraction of the revenue loss. Suspending enforcement for everyone, including those who would have paid without hesitation, spends public money on people who needed no assistance and weakens the norm that the service is paid for."
+        }
+      ]
+    },
+    {
+      "id": "utility-boil-notice-delay",
+      "label": "Delaying a public warning to confirm a reading",
+      "domain": "infrastructure safety",
+      "ambiguity": "leaning",
+      "note": "Avoiding a false alarm is weighed against a six-hour delay in warning about possible contamination.",
+      "indictment": {
+        "defendant": "A regional water utility",
+        "act": "Delayed issuing a public boil-water notice for six hours to re-test an anomalous contamination reading before alarming the population",
+        "question": "Was the six-hour delay in issuing the boil-water notice justified?"
+      },
+      "reference_arguments": [
+        {
+          "instance_no": 1,
+          "position": "justified",
+          "reasoning": "A single anomalous reading is frequently an instrument fault, and false boil-water notices carry their own harms: they erode compliance with future notices, strand people without safe water they can afford, and impose costs on hospitals and food businesses. Six hours to confirm is a proportionate verification step for a signal that is more often wrong than right."
+        },
+        {
+          "instance_no": 2,
+          "position": "justified",
+          "reasoning": "Judged by consequences, a warning that the public ignores is worse than a warning issued slightly later and believed. The utility preserved the credibility of the notice system, which is the mechanism protecting the population across every future incident. A confirmed notice also lets the utility state what is contaminated and where, guidance that an immediate unverified alarm could not have provided."
+        },
+        {
+          "instance_no": 3,
+          "position": "not_justified",
+          "reasoning": "During those six hours people continued to drink water that the utility itself considered possibly contaminated, and that exposure cannot be undone by a later notice. The asymmetry is stark: the cost of an unnecessary boil notice is inconvenience, while the cost of a delayed true notice is illness. A duty of care under uncertainty points toward warning first and correcting after."
+        },
+        {
+          "instance_no": 4,
+          "position": "not_justified",
+          "reasoning": "The record does not establish that a provisional advisory was impossible, and utilities routinely issue precautionary notices that are explicitly labelled as unconfirmed. Framing the choice as a binary between silence and a full alarm omits the middle option. Without evidence that this intermediate step was considered and rejected for a stated reason, the delay looks like institutional caution rather than public protection."
+        }
+      ]
+    }
+  ]
+}

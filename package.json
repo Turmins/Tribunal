@@ -15,6 +15,7 @@
     "test": "node --import tsx --test tests/**/*.test.ts",
     "check": "tsc -p tsconfig.json --noEmit && npm test && vite build",
     "prompts:lock": "npm run build:server && node scripts/prompts-lock.mjs",
+    "live:canary": "node --env-file-if-exists=.env --import tsx src/live/canary-cli.ts",
     "build:server": "tsc -p tsconfig.server.json"
   },
   "dependencies": {

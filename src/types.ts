@@ -10,5 +10,9 @@ export interface ModelRequest {
 export interface ModelResult {
   rawBody: string; finishReason: string; provider: string; model: string;
   inputTokens: number; outputTokens: number; costUsd: number; latencyMs: number;
+  /** HTTP requests actually issued for this completion; reporting only. */
+  httpAttempts?: number;
+  /** True when strict json_schema was rejected and json_object was used instead. */
+  formatFallback?: boolean;
 }
 export interface ModelProvider { complete(request: ModelRequest): Promise<ModelResult> }
