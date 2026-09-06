@@ -1,0 +1,56 @@
+name: Verification
+
+on:
+  pull_request:
+  push:
+    branches-ignore:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verification-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verification:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: tribunal
+          POSTGRES_PASSWORD: tribunal
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U tribunal -d postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      TEST_ADMIN_URL: postgres://tribunal:tribunal@localhost:5432/postgres
+    steps:
+      - name: Check out the complete history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Use Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Run the merge-readiness gate
+        run: npm run gate:merge
+      - name: Upload the evidence pack
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: merge-readiness-${{ github.sha }}
+          path: evaluation/results/merge-readiness-*.md
+          if-no-files-found: warn

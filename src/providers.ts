@@ -18,13 +18,18 @@ export class OpenRouterProvider implements ModelProvider {
   async complete(request:ModelRequest):Promise<ModelResult>{
     if(!config.OPENROUTER_API_KEY) throw new Error("openrouter_key_missing");
     try {
-      return await this.call(request,config.STRUCTURED_OUTPUT);
+      const result=await this.call(request,config.STRUCTURED_OUTPUT);
+      return {...result,httpAttempts:1,formatFallback:false};
     } catch(error:any){
       // Not every model supports strict schemas. One compatible-mode fallback
       // is cheaper than losing a run; every other failure remains a real failure.
       if(config.STRUCTURED_OUTPUT==="json_schema"&&error?.formatUnsupported){
         console.warn(JSON.stringify({event:"structured_output_fallback",model:request.model,role:request.role}));
-        return await this.call(request,"json_object");
+        const result=await this.call(request,"json_object");
+        // The successful response describes only the second request. Unless the
+        // provider reports a combined charge, billing for the rejected first
+        // request is unknown and the guarded runner must retain its full reserve.
+        return {...result,costSource:"unknown",httpAttempts:2,formatFallback:true};
       }
       throw error;
     }
@@ -50,7 +55,7 @@ export class OpenRouterProvider implements ModelProvider {
       // Providers do not always return cost. A zero cost for a live call would
       // defeat budgets, so the fallback price table is used (ARCHITECTURE §17.1).
       const cost=resolveCost(request.role,body.usage?.cost,inputTokens,outputTokens);
-      return {rawBody:body.choices?.[0]?.message?.content??"",finishReason:body.choices?.[0]?.finish_reason??"unknown",provider:"openrouter",model:body.model??request.model,inputTokens,outputTokens,costUsd:cost.costUsd,latencyMs:Math.round(performance.now()-start)};
+      return {rawBody:body.choices?.[0]?.message?.content??"",finishReason:body.choices?.[0]?.finish_reason??"unknown",provider:"openrouter",model:body.model??request.model,inputTokens,outputTokens,costUsd:cost.costUsd,costSource:cost.source,latencyMs:Math.round(performance.now()-start)};
     } finally {clearTimeout(timer)}
   }
 }

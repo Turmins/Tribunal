@@ -1,0 +1,8 @@
+#!/bin/sh
+# Cheap content gates. These run with nobody present and refuse the commit when
+# they find a credential or Cyrillic tracked content. Protected-path approval is
+# checked by commit-msg, after Git has created the final commit message.
+#
+# Bypassing this hook with --no-verify defeats the control it provides. If a
+# finding is wrong, fix the gate rather than skipping it.
+exec node --import tsx scripts/gate.ts

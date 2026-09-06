@@ -4,7 +4,7 @@ Tribunal is a web application for examining a difficult act from opposing perspe
 
 The application never chooses a winner, counts votes, or creates a combined verdict. The human user interprets the disagreement and makes the final decision.
 
-See [ARCHITECTURE.md](./ARCHITECTURE.md) for the implementation design, [TRIBUNAL_CONTEXT_HANDOFF.md](./TRIBUNAL_CONTEXT_HANDOFF.md) for the course requirements, [AGENTS.md](./AGENTS.md) for the model-role layer, and [QA_REPORT.md](./QA_REPORT.md) for current verification evidence.
+See [ARCHITECTURE.md](./ARCHITECTURE.md) for the implementation design, [TRIBUNAL_CONTEXT_HANDOFF.md](./TRIBUNAL_CONTEXT_HANDOFF.md) for the course requirements, [AGENTS.md](./AGENTS.md) for the model-role layer, [LIVE_EVALUATION.md](./LIVE_EVALUATION.md) for the guarded live-evaluation tools, [VERIFICATION.md](./VERIFICATION.md) for the merge gates, and [QA_REPORT.md](./QA_REPORT.md) for current verification evidence.
 
 ## Implemented
 
@@ -29,7 +29,8 @@ See [ARCHITECTURE.md](./ARCHITECTURE.md) for the implementation design, [TRIBUNA
 - composable, versioned prompt blocks protected by `prompts.lock.json`;
 - three selectable differentiated judge panels plus a non-product control baseline;
 - eight distinct model-response validation layers;
-- strict `json_schema` output with one automatic `json_object` compatibility fallback.
+- strict `json_schema` output with one automatic `json_object` compatibility fallback;
+- a budget-guarded OpenRouter canary and a deterministic model evaluation harness, both dry-run by default.
 
 ## Local setup
 
@@ -58,7 +59,37 @@ The default `MODEL_ADAPTER=scripted` mode requires no OpenRouter account and inc
 npm run check
 ```
 
+Mechanical gates refuse a commit or commit message that carries a credential or
+Cyrillic text, and refuse unannounced changes to prompts, the prompt lock, or
+migration history. Install them once per clone:
+
+```sh
+npm run hooks:install
+```
+
+The installed pre-push hook runs `npm run gate:merge`. GitHub pull requests run
+the same command with PostgreSQL through the `verification` status check. Make
+that status required in the repository ruleset before treating it as a remote
+merge blocker. Every gate carries a self-test and must prove it can fail before
+it is allowed to report a clean result. See [VERIFICATION.md](./VERIFICATION.md).
+
 The command runs strict type checks, protocol and regression tests, and a production build. PostgreSQL integration scenarios run when a database is reachable and are reported as skipped otherwise. No test invokes live OpenRouter.
+
+## Guarded live evaluation
+
+Two commands prepare for paid inference without spending anything by default:
+
+```sh
+npm run live:canary     # plan one controlled logical completion; sends nothing
+npm run eval:models -- --models <model-id>   # plan a model comparison; sends nothing
+```
+
+Both are dry-run unless `--execute` is supplied together with `--max-cost-usd`,
+and both refuse to run when the conservative cost estimate does not fit the
+approved limit. The API key is read from the server environment only and never
+accepted as an argument. Automated verification performs no live OpenRouter call,
+and the repository contains no live evaluation evidence. See
+[LIVE_EVALUATION.md](./LIVE_EVALUATION.md).
 
 ## API
 
@@ -81,6 +112,6 @@ The command runs strict type checks, protocol and regression tests, and a produc
 
 ## Current readiness
 
-The full 4+3 orchestration exists and is usable in scripted mode. Live model agents are not active by default: the repository uses `MODEL_ADAPTER=scripted`, and no OpenRouter key is committed. Public deployment still requires an explicit privacy, authentication, operations, and live-model evaluation decision.
+The full 4+3 orchestration exists and is usable in scripted mode. Live model agents are not active by default: the repository uses `MODEL_ADAPTER=scripted`, and no OpenRouter key is committed. The canary and evaluation harness are implemented, but no tracked evidence establishes a successful live-provider run, so live model quality remains unmeasured. Public deployment still requires an explicit privacy, authentication, operations, and live-model evaluation decision.
 
 For database inspection in the default local Compose setup, use host `localhost`, port `5432`, and database/user/password `tribunal`.

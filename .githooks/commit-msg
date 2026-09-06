@@ -1,0 +1,5 @@
+#!/bin/sh
+# Check the final commit message itself for credentials and Cyrillic, then
+# validate any protected-path acknowledgement. The pre-commit hook cannot read
+# a message that does not exist yet.
+exec node --import tsx scripts/gate.ts --commit-message-file "$1"
